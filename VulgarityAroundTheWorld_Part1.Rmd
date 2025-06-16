@@ -90,7 +90,7 @@ str(corpus)
 iceeafl <- list.files(here::here("D:\\corpora\\ICE East Africa\\ICE-EA\\CORPUS\\spoken-ice-ea"), full.names = T, pattern = ".rtf", recursive = T, ignore.case = T, include.dirs = T)
 ea <- sapply(iceeafl, function(x) {
   x <- scan(x,
-    what = "char",
+    what = "char", 
     sep = "",
     quote = "",
     quiet = T,
