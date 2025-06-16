@@ -1,0 +1,603 @@
+---
+title: "Vulgarity in face-to-face interaction across selected varieties of English - Part 3: data analysis"
+output: html_document
+date: "2025-06-02"
+---
+
+# Introduction
+
+# Preparation
+
+installing packages
+
+```{r eval = F}
+install.packages("tidyverse")
+install.packages("dplyr")
+install.packages("tidyr")
+install.packages("stringr")
+install.packages("stringi")
+install.packages("forcats")
+install.packages("lubridate")
+install.packages("car")
+install.packages("ggpubr")
+install.packages("Hmisc")
+install.packages("MASS")
+install.packages("rms")
+install.packages("robustbase")
+install.packages("sjPlot")
+install.packages("tibble")
+install.packages("vcd")
+install.packages("gridExtra")
+install.packages("performance")
+install.packages("here")
+install.packages("cfa")
+install.packages("writexl")
+install.packages("caret")
+install.packages("tree")
+install.packages("ggparty")
+install.packages("Gmisc")
+install.packages("grid")
+install.packages("Hmisc")
+install.packages("party")
+install.packages("partykit")
+install.packages("pdp")
+install.packages("tidyr")
+install.packages("vip")
+```
+
+
+activating packages
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(stringi)  # redundant but useful for speed-optimized string operations
+library(forcats)  # redundant here, but commonly loaded in tidy workflows
+library(lubridate)
+library(ggpubr)
+library(robustbase)
+library(tibble)
+library(vcd)
+library(gridExtra)
+library(performance)
+library(cfa)
+library(writexl)
+library(caret)
+library(tree)
+library(caret)
+library(tidyverse)
+library(ggparty)
+library(Gmisc)
+library(grid)
+library(Hmisc)
+library(party)
+library(partykit)
+library(pdp)
+library(tidyr)
+library(vip)
+```
+
+
+load data
+
+```{r}
+res <- readRDS(here::here("data/res.rda"))
+# inspect
+head(res)
+```
+
+
+```{r}
+kwicsdf <- readRDS(here::here("data/kwicsdf.rda"))
+# inspect
+head(res)
+```
+
+# Statistical Analysis
+
+## CFA
+
+```{r}
+kwicsdf %>%
+  dplyr::group_by(region, lemma) %>%
+  dplyr::summarise(freq = n(), .groups = "drop") %>%
+  mutate(z_score = scale(freq)) -> cfadat
+# inspect
+head(cfadat)
+```
+
+
+
+```{r}
+library(cfa)
+# define configurations
+configs <- cfadat %>%
+  dplyr::select(region, lemma)
+# define counts
+counts <- cfadat$freq
+# perform cfa
+cfa(configs, counts) -> cfa_res
+# inspect
+cfa_res
+```
+
+
+
+```{r}
+options(scipen=999)
+cfa_res[[1]] %>%
+  as.data.frame()  %>%
+  dplyr::filter(sig.chisq == "TRUE")  -> cfares
+```
+
+
+```{r}
+cfa_res[[1]] %>%
+  as.data.frame() %>%
+  dplyr::mutate(lemma = stringr::str_remove_all(label, ".* "),
+                region = stringr::str_replace_all(label, "^(\\w+ {0,1}\\w*) \\w+.*$", "\\1")) %>%
+  dplyr::group_by(region) %>%
+  dplyr::mutate(region_total = sum(n)) %>%
+  dplyr::ungroup() %>%
+  dplyr::group_by(lemma) %>%
+  dplyr::mutate(lemma_total = sum(n)) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(total = sum(n)) %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(phi = (sqrt(chisq / total)))  %>%
+  dplyr::mutate(phi = ifelse(n > expected, phi, -phi)) %>%
+  dplyr::mutate(phi = ifelse(is.na(phi), 0, phi))  %>%
+  mutate(phi = ifelse(phi < -0.02 | phi > 0.02, phi, 0),
+         phi = ifelse(is.na(phi), 0, phi)) %>%
+  dplyr::mutate(region = factor(region, levels = c("United States", "Great Britain", "Australia", "Canada", "Ireland", "New Zealand", "India", "Nigeria", "Philippines", "Pakistan", "Singapore", "South Africa", "Ghana", "Kenya", "Malaysia", "Hong Kong", "Jamaica", "Tanzania", "Sri Lanka", "Bangladesh"))) -> Fig6dat
+# inspect
+Fig6dat
+```
+
+
+
+```{r}
+# Create heatmap
+ggplot(Fig6dat, aes(x = region, y = lemma, fill = phi)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() +
+  labs(
+    title = "",
+    x = "Region",
+    y = "Vulgar Lemma",
+    fill = "Phi-value"
+  ) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+    panel.background = element_rect(fill = "white", color = NA), # Set panel background to white
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank())   # Set plot background to white
+ggsave(here::here("images", "Fig6.png"), width = 15, height = 22, units = "cm", dpi = 600,bg = "white")
+```
+
+
+```{r}
+Table3 <- Fig6dat %>%
+  dplyr::filter(sig.z == T) %>%
+  dplyr::select(-label, -z, -p.z, -sig.z, -region_total, -lemma_total, -total, -sig.chisq) %>%
+  dplyr::mutate(type = ifelse(phi < 0, "Avoided", "Preferred"),
+                p.chisq = ifelse(p.chisq < 0.001, "< .001***", p.chisq),
+                Q = round(Q, 5),
+                expected = round(expected, 1),
+                chisq = round(chisq, 1),
+                phi = round(phi, 3)) %>%
+  dplyr::arrange(-phi) %>%
+  dplyr::relocate(any_of(c("region", "lemma", "type", "n", "expected", "chisq", "Q"))) %>%
+  dplyr::rename(Region = region,
+                `Vulgar lemma` = lemma,
+                `Observed frequency` = n,
+                `Expected frequency` = expected,
+                `Q-value`	= Q,
+                `X2-value` = chisq,
+                `Bonferroni-corrected p-value` = p.chisq,
+                `Phi-value` = phi)
+# save 
+writexl::write_xlsx(Table3, here::here("tables", "Table3.xlsx"))
+# inspect
+Table3
+```
+
+## CIT
+
+### Preparation
+
+data preparation
+
+```{r}
+sdat <- res %>%
+  ungroup() %>%
+  group_by(region, genre, file, subfile.id, speaker) %>%
+  summarise(
+    Tokens = sum(tokens, na.rm = TRUE),
+    VulgarTokens = sum(VulgarTokens, na.rm = TRUE),
+    VulgarSpeaker = sum(ifelse(VulgarTokens > 0, 1, 0), na.rm = TRUE),
+    sex = unique(sex),
+    age = unique(age),
+    date = unique(date),
+    audience = unique(audience),
+    education = unique(education),
+    occupation = unique(occupation),
+    mothertongue = unique(mothertongue)) %>%
+  dplyr::ungroup()
+# inspect
+head(sdat)
+```
+
+
+clean data
+
+```{r}
+cdat <- sdat %>%
+  dplyr::select(-subfile.id)  %>%
+  dplyr::filter(is.na(age) == F,
+                is.na(sex) == F) %>%
+  dplyr::mutate(date = dplyr::case_when(date %in% c("1985", "1990", "1991", "1992", "1993", "1994") ~ "1985-1994",
+                                        date %in% c("1995", "1996", "1997", "1998", "1999", "2000") ~ "1995-2000",
+                                        date %in% c("2001", "2002", "2003", "2004", "2005", "2008") ~ "2001-2008",
+                                        region == "Great Britain" ~ "1985-1994",
+                                        region == "New Zealand" ~ "1985-1994",
+                                        region == "United States" ~ "1995-2000",
+                                        region == "Tanzania" ~ "2001-2008",
+                                        region == "Kenya" ~ "2001-2008",
+                                        T ~ date)) %>%
+  # factorize audience
+  dplyr::mutate(audience = dplyr::case_when(
+    genre == "private dialogue" & audience < 2 ~ "single",
+    genre == "private dialogue" & audience < 6 ~ "small group",
+    T ~ "large group")) %>%
+  dplyr::mutate(audience = factor(audience, levels = c("single", "small group", "large group")))  %>%
+  # speaker sues vulgarity
+  dplyr::mutate(VulgarityUser = ifelse(VulgarTokens > 0, 1, 0)) %>%
+  # factorize date
+  dplyr::mutate(date = factor(date, levels = c("1985-1994", "1995-2000", "2001-2008"))) %>%
+  # fill-in missing values for mothertongue
+  dplyr::mutate(mothertongue = ifelse(is.na(mothertongue), "English", mothertongue))  %>%
+  # remove superfluous variables
+  dplyr::select(-education, -occupation)
+# inspect
+head(cdat)
+```
+
+check data
+
+```{r}
+cdat %>%
+  dplyr::group_by(genre, audience) %>%
+  dplyr::summarise(freq = n())
+```
+
+
+
+
+
+
+```{r}
+citdata <- cdat %>%
+  dplyr::filter(speaker != "Z|Z1|X|Y")  %>%
+  # factorize variables
+  dplyr::mutate(region = factor(region),
+                age = factor(age),
+                sex = factor(sex),
+                VulgarityUser = factor(VulgarityUser)) %>%
+  dplyr::filter(complete.cases(.)) %>%
+  dplyr::select(-file, -speaker, -Tokens, -VulgarTokens, -VulgarSpeaker)
+# inspect
+str(citdata)
+```
+
+### Full
+
+```{r}
+set.seed(111) # set.seed
+# convert character strings to factors
+citdata <- citdata %>%
+    dplyr::mutate_if(is.character, factor)
+# create initial conditional inference tree model
+citd.ctree <- partykit::ctree(VulgarityUser ~ region + genre +  sex + age + date + audience + mothertongue,
+                              data = citdata)
+plot(citd.ctree, gp = gpar(fontsize = 8)) # plot final ctree
+```
+
+
+
+```{r}
+# extract p-values
+pvals <- unlist(nodeapply(citd.ctree, ids = nodeids(citd.ctree), function(n) info_node(n)$p.value))
+pvals <- pvals[pvals < .05]
+# plotting
+p6 <- ggparty(citd.ctree) +
+    geom_edge() +
+    geom_edge_label() +
+    geom_node_label(
+        line_list = list(
+            aes(label = splitvar),
+            aes(
+                label = paste0(
+                    "N=", nodesize, ", p",
+                    ifelse(pvals < .001, "<.001", paste0("=", round(pvals, 3)))
+                ),
+                size = 10
+            )
+        ),
+        line_gpar = list(
+            list(size = 13),
+            list(size = 10)
+        ),
+        ids = "inner"
+    ) +
+    geom_node_label(aes(label = paste0("Node ", id, ", N = ", nodesize)),
+        ids = "terminal", nudge_y = -0.0, nudge_x = 0.01
+    ) +
+    geom_node_plot(
+        gglist = list(
+            geom_bar(aes(x = "", fill = VulgarityUser),
+                position = position_fill(), color = "black"
+            ),
+            theme_minimal(),
+            scale_fill_manual(values = c("gray50", "gray80"), guide = "none"),
+            scale_y_continuous(breaks = c(0, 1)),
+            xlab(""),
+            ylab("Probability"),
+            geom_text(
+                aes(
+                    x = "", group = VulgarityUser,
+                    label = stat(count)
+                ),
+                stat = "count", position = position_fill(), vjust = 1.1
+            )
+        ),
+        shared_axis_labels = TRUE
+    )
+p6
+#ggsave(here::here("images", "Fig6.png"), plot = p6, width = 48, height = 28, units = "cm", dpi = 600, bg = "white")
+```
+
+### Shrunk
+
+```{r}
+citdata2 <- cdat %>%
+  # genre
+  dplyr::mutate(genre = dplyr::case_when(genre == "private dialogue" ~ "private",
+                                         genre == "public dialogue" ~ "public",
+                                         genre == "scripted monologue" ~ "scripted",
+                                         genre == "unscripted monologue" ~ "unscripted",
+                                         T ~ genre)) %>%
+  
+  # age
+  dplyr::mutate(age = dplyr::case_when(age == "10-18" ~ "10-33",
+                                       age== "19-25" ~ "10-33",
+                                       age== "26-33" ~ "10-33",
+                                       age== "19-25" ~ "10-33",
+                                       age== "42-49" ~ "42+",
+                                       age== "50+" ~ "42+",
+                                         T ~ age)) %>%
+  
+  # audience
+  dplyr::mutate(audience = dplyr::case_when(audience == "small group" ~ "intimate",
+                                         audience == "large group" ~ "broad",
+                                         audience == "single" ~ "broad",
+                                         T ~ audience)) %>%
+  # region
+  dplyr::mutate(region = dplyr::case_when(region == "Great Britain" ~ "GB",
+                                          region == "United States" ~ "US",
+                                          region == "New Zealand" ~ "NZ",
+                                          region == "Australia" ~ "AU",
+                                          region == "Ireland" ~ "IR",
+                                          region == "Hong Kong" ~ "HK",
+                                          region == "Sri Lanka" ~ "SL",
+                                          region == "Canada" ~ "CA",
+                                          region == "Tanzania" ~ "TZ",
+                                          region == "India" ~ "IN",
+                                          region == "Philippines" ~ "PH",
+                                          region == "Jamaica" ~ "JM",
+                                          region == "Kenya" ~ "KY",
+                                          T ~ region)) %>%
+  dplyr::filter(speaker != "Z|Z1|X|Y")  %>%
+  # factorize variables
+  dplyr::mutate(region = factor(region),
+                age = factor(age),
+                sex = factor(sex),
+                VulgarityUser = factor(VulgarityUser)) %>%
+  dplyr::filter(complete.cases(.)) %>%
+  dplyr::select(-file, -speaker, -Tokens, -VulgarTokens, -VulgarSpeaker) %>%
+  droplevels(.)
+```
+
+```{r}
+set.seed(111) # set.seed
+# convert character strings to factors
+citdata2 <- citdata2 %>%
+    dplyr::mutate_if(is.character, factor)
+# create initial conditional inference tree model
+citd.ctree <- partykit::ctree(VulgarityUser ~ region + genre +  sex + age + date + audience + mothertongue,
+                              data = citdata2)
+plot(citd.ctree, gp = gpar(fontsize = 8)) # plot final ctree
+```
+
+```{r}
+# extract p-values
+pvals <- unlist(nodeapply(citd.ctree, ids = nodeids(citd.ctree), function(n) info_node(n)$p.value))
+pvals <- pvals[pvals < .05]
+# plotting
+p6 <- ggparty(citd.ctree) +
+    geom_edge() +
+    geom_edge_label() +
+    geom_node_label(
+        line_list = list(
+            aes(label = splitvar),
+            aes(
+                label = paste0(
+                    "N=", nodesize, ", p",
+                    ifelse(pvals < .001, "<.001", paste0("=", round(pvals, 3)))
+                ),
+                size = 12
+            )
+        ),
+        line_gpar = list(
+            list(size = 15),
+            list(size = 12)
+        ),
+        ids = "inner"
+    ) +
+    geom_node_label(aes(label = paste0("Node ", id, ", N = ", nodesize)),
+        ids = "terminal", nudge_y = -0.0, nudge_x = 0.01
+    ) +
+    geom_node_plot(
+        gglist = list(
+            geom_bar(aes(x = "", fill = VulgarityUser),
+                position = position_fill(), color = "black"
+            ),
+            theme_minimal(),
+            scale_fill_manual(values = c("gray50", "gray80"), guide = "none"),
+            scale_y_continuous(breaks = c(0, 1)),
+            xlab(""),
+            ylab("Probability"),
+            geom_text(
+                aes(
+                    x = "", group = VulgarityUser,
+                    label = stat(count)
+                ),
+                stat = "count", position = position_fill(), vjust = 1.1
+            )
+        ),
+        shared_axis_labels = TRUE
+    )
+p6
+ggsave(here::here("images", "Fig6.png"), plot = p6, width = 55, height = 30, units = "cm", dpi = 600, bg = "white")
+```
+
+
+### Split
+
+```{r}
+citdata3 <- cdat %>%
+  # genre
+  dplyr::filter(genre == "private dialogue") %>%
+  
+  # age
+  dplyr::mutate(age = dplyr::case_when(
+    age == "10-18" ~ "10-33",
+    age== "19-25" ~ "10-33",
+    age== "26-33" ~ "10-33",
+    age== "19-25" ~ "10-33",
+    age== "42-49" ~ "42+",
+    age== "50+" ~ "42+",
+    T ~ age)) %>%
+  
+  # date
+  dplyr::mutate(date = dplyr::case_when(
+    date == "1985-1994" ~ "1985-2000",
+    date== "1995-2000" ~ "1985-2000",
+    T ~ date)) %>%
+  
+  # audience
+  dplyr::mutate(audience = dplyr::case_when(
+    audience == "small group" ~ "intimate",
+    audience == "large group" ~ "broad",
+    audience == "single" ~ "broad",
+    T ~ audience)) %>%
+  # region
+  dplyr::mutate(region = dplyr::case_when(
+    region == "Great Britain" ~ "GB",
+    region == "United States" ~ "US",
+    region == "New Zealand" ~ "NZ",
+    region == "Australia" ~ "AU",
+    region == "Ireland" ~ "IR",
+    region == "Hong Kong" ~ "HK",
+    region == "Sri Lanka" ~ "SL",
+    region == "Canada" ~ "CA",
+    region == "Tanzania" ~ "TZ",
+    region == "India" ~ "IN",
+    region == "Philippines" ~ "PH",
+    region == "Jamaica" ~ "JM",
+    region == "Kenya" ~ "KY",
+    T ~ region)) %>%
+  dplyr::filter(speaker != "Z|Z1|X|Y")  %>%
+  # factorize variables
+  dplyr::mutate(region = factor(region),
+                age = factor(age),
+                sex = factor(sex),
+                VulgarityUser = factor(VulgarityUser)) %>%
+  dplyr::filter(complete.cases(.)) %>%
+  dplyr::select(-file, -speaker, -Tokens, -VulgarTokens, -VulgarSpeaker) %>%
+  droplevels(.)
+```
+
+```{r}
+set.seed(333) # set.seed
+# convert character strings to factors
+citdata3 <- citdata3 %>%
+    dplyr::mutate_if(is.character, factor)
+# create initial conditional inference tree model
+citd.ctree <- partykit::ctree(VulgarityUser ~ region + sex + age + date + audience + mothertongue,
+                              data = citdata3)
+plot(citd.ctree, gp = gpar(fontsize = 8)) # plot final ctree
+```
+
+
+```{r}
+# extract p-values
+pvals <- unlist(nodeapply(citd.ctree, ids = nodeids(citd.ctree), function(n) info_node(n)$p.value))
+pvals <- pvals[pvals < .05]
+# plotting
+p7 <- ggparty(citd.ctree) +
+    geom_edge() +
+    geom_edge_label() +
+    geom_node_label(
+        line_list = list(
+            aes(label = splitvar),
+            aes(
+                label = paste0(
+                    "N=", nodesize, ", p",
+                    ifelse(pvals < .001, "<.001", paste0("=", round(pvals, 3)))
+                ),
+                size = 12
+            )
+        ),
+        line_gpar = list(
+            list(size = 15),
+            list(size = 12)
+        ),
+        ids = "inner"
+    ) +
+    geom_node_label(aes(label = paste0("Node ", id, ", N = ", nodesize)),
+        ids = "terminal", nudge_y = -0.0, nudge_x = 0.01
+    ) +
+    geom_node_plot(
+        gglist = list(
+            geom_bar(aes(x = "", fill = VulgarityUser),
+                position = position_fill(), color = "black"
+            ),
+            theme_minimal(),
+            scale_fill_manual(values = c("gray50", "gray80"), guide = "none"),
+            scale_y_continuous(breaks = c(0, 1)),
+            xlab(""),
+            ylab("Probability"),
+            geom_text(
+                aes(
+                    x = "", group = VulgarityUser,
+                    label = stat(count)
+                ),
+                stat = "count", position = position_fill(), vjust = 1.1
+            )
+        ),
+        shared_axis_labels = TRUE
+    )
+p7
+ggsave(here::here("images", "Fig7.png"), plot = p7, width = 35, height = 17.5, units = "cm", dpi = 600, bg = "white")
+```
+
+# Outro
+
+```{r}
+sessionInfo()
+```
+
+

@@ -1,0 +1,574 @@
+---
+title: "Vulgarity in face-to-face interaction across selected varieties of English - Part 2: data extraction and preparation"
+output: html_document
+date: "2025-06-02"
+---
+
+# Introduction
+
+# Preparation
+
+installing packages
+
+```{r eval = F}
+install.packages("writexl")
+install.packages("ggflags", repos = c(
+  "https://jimjam-slam.r-universe.dev",
+  "https://cloud.r-project.org"))
+```
+
+
+activating packages
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(stringi)  # redundant but useful for speed-optimized string operations
+library(forcats)  # redundant here, but commonly loaded in tidy workflows
+library(lubridate)
+library(writexl)
+```
+
+
+load data
+
+```{r}
+ice <- readRDS(here::here("tables/ice.rds")) %>%
+  dplyr::rename(docname = text) %>%
+  dplyr::mutate(genre = ifelse(genre == "rivate dialogue", "private dialogue", genre))
+# inspect
+head(ice)
+```
+
+```{r}
+kwics <- readRDS(here::here("tables/kwic_results_clean.rda")) %>%
+  dplyr::filter(keyword != "F")
+# inspect
+head(kwics)
+```
+
+
+```{r}
+kwicstb <- dplyr::left_join(kwics, ice) %>%
+  dplyr::mutate(vulgar = 1) %>%
+  dplyr::group_by(region, docname) %>%
+  dplyr::summarise(VulgarTokens = n(),
+                   VulgarTypes = length(names(table(keyword))))
+
+# inspect
+head(kwicstb)
+```
+
+```{r}
+kwicsdf <- dplyr::left_join(kwics, ice)
+# save
+saveRDS(kwicsdf, here::here("data/kwicsdf.rda"))
+# inspect
+head(kwicsdf)
+```
+
+
+```{r}
+kwicsdf %>%
+  dplyr::group_by(region, lemma) %>%
+  dplyr::summarise(freq = n())
+```
+
+```{r}
+kwicsdf %>%
+  dplyr::filter(region == "Philippines") 
+```
+
+```{r}
+top1_lemmaregion <- kwicsdf %>%
+  count(region, lemma, sort = TRUE) %>%
+  group_by(region) %>%
+  slice_max(n, n = 1, with_ties = FALSE) %>%
+  ungroup()
+#writexl::write_xlsx(top1_lemmaregion, here::here("tables", "top1_lemmaregion.xlsx"))
+# inspect
+head(top1_lemmaregion)
+```
+
+
+# combine kwics and ice tables
+
+```{r}
+res <- dplyr::left_join(ice, kwicstb) %>%
+  dplyr::mutate(VulgarTokens = ifelse(is.na(VulgarTokens), 0, VulgarTokens),
+                VulgarTypes = ifelse(is.na(VulgarTypes), 0, VulgarTypes))
+# save dataset
+saveRDS(res, here::here("data/res.rda"))
+
+# inspect
+head(res, 100); table(res$VulgarTokens)
+```
+
+
+# Table 1
+
+```{r}
+# Assuming 'res' is your initial data frame
+Table1 <- res %>%
+  ungroup() %>%
+  dplyr::rename(VulgarTexts = VulgarTypes) %>%
+  group_by(region, genre) %>%
+  summarise(
+    Texts = n(),
+     VulgarTexts = sum(ifelse(VulgarTexts > 0, 1, 0), na.rm = TRUE),
+    VulgarTokens = sum(VulgarTokens, na.rm = TRUE),
+    Tokens = sum(tokens, na.rm = TRUE),
+    Percent = round(sum(VulgarTokens, na.rm = TRUE) / sum(tokens, na.rm = TRUE) * 100, 3)
+  ) %>%
+  rename(
+    Region = region,
+    `Discourse Type` = genre
+  )
+
+# Calculate totals
+totals <- Table1 %>%
+  dplyr::ungroup()  %>%
+  summarise(
+    Region = "Total",
+    `Discourse Type` = "",
+    Texts = sum(Texts, na.rm = TRUE),
+    VulgarTexts = sum(VulgarTexts, na.rm = TRUE),
+    VulgarTokens = sum(VulgarTokens, na.rm = TRUE),
+    Tokens = sum(Tokens, na.rm = TRUE),
+    Percent = round(sum(VulgarTokens, na.rm = TRUE) / sum(Tokens, na.rm = TRUE) * 100, 3)
+  )
+
+# Bind the totals row to the original summary
+Table1 <- bind_rows(Table1, totals)
+
+# save 
+writexl::write_xlsx(Table1, here::here("tables", "Table1.xlsx"))
+# inspect
+Table1
+```
+
+
+# Figure 1
+
+```{r}
+res  %>%
+    ungroup() %>%
+  dplyr::rename(VulgarTexts = VulgarTypes) %>%
+  dplyr::group_by(region) %>%
+  dplyr::summarise(Texts = n(),
+                   VulgarTexts = sum(ifelse(VulgarTexts > 0, 1, 0), na.rm = TRUE),,
+                   VulgarTokens = sum(VulgarTokens),
+                   Tokens = sum(tokens)) %>%
+  dplyr::mutate(Percent =  round(VulgarTokens/Tokens *100, 3)) %>%
+  dplyr::mutate(Kachru = dplyr::case_when(region == "Australia" ~ "Inner circle",
+                                          region == "Canada" ~ "Inner circle",
+                                          region == "Great Britain" ~ "Inner circle",
+                                          region == "Ireland" ~ "Inner circle",
+                                          region == "New Zealand" ~ "Inner circle",
+                                          region == "United States" ~ "Inner circle",
+                                          T ~ "outer circle")) %>%
+  dplyr::mutate(country = dplyr::case_when(region == "Australia" ~ "au",
+                                           region == "Bangladesh" ~ "bd",
+                                           region == "Canada" ~ "ca",
+                                           region == "Great Britain" ~ "gb",
+                                           region == "Ghana" ~ "gh",
+                                           region == "Hong Kong" ~ "hk",
+                                          region == "Ireland" ~ "ie",
+                                          region == "India" ~ "in",
+                                          region == "Jamaica" ~ "jm",
+                                          region == "Kenya" ~ "ke",
+                                          region == "Malaysia" ~ "my",
+                                          region == "New Zealand" ~ "nz",
+                                          region == "Nigeria" ~ "ng",
+                                          region == "Pakistan" ~ "pk",
+                                          region == "Philippines" ~ "ph",
+                                          region == "Singapore" ~ "sg",
+                                          region == "South Africa" ~ "za",
+                                          region == "Sri Lanka" ~ "lk",
+                                          region == "Tanzania" ~ "tz",
+                                          region == "United States" ~ "us",
+                                          T ~ NA)) -> Figure1dat
+# inspect
+head(Figure1dat)
+```
+
+
+
+```{r}
+Figure1dat %>%
+  ggplot(aes(x = reorder(region, Percent), 
+             y = Percent, 
+             country = country, 
+             label = Percent, 
+             fill = Kachru)) +
+  geom_bar(stat = "identity") +
+  ggflags::geom_flag(size = 4) +
+   geom_text(hjust = -1.1, color = "black", size = 3)+
+  coord_flip(ylim = c(0, 0.1)) +
+  scale_fill_manual(values = c("gray90", "gray70")) +
+  theme_bw() +
+  labs(xlab = "", ylab = "Percent") +
+  theme(legend.position = c(0.8, 0.5),
+        legend.title = element_blank(),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.title.y=element_blank())
+ggsave(here::here("images", "Fig1.png"), width = 14, height = 10, units = "cm", dpi = 600)
+```
+
+
+# Figure 2
+
+```{r}
+res  %>%
+  ungroup() %>%
+  dplyr::rename(VulgarTexts = VulgarTypes) %>%
+  dplyr::group_by(region, genre) %>%
+    dplyr::summarise(Texts = n(),
+                   VulgarTexts = sum(ifelse(VulgarTexts > 0, 1, 0), na.rm = TRUE),,
+                   VulgarTokens = sum(VulgarTokens),
+                   Tokens = sum(tokens)) %>%
+  dplyr::mutate(Percent =  round(VulgarTokens/Tokens *100, 3)) %>%
+  dplyr::mutate(Kachru = dplyr::case_when(region == "Australia" ~ "Inner circle",
+                                          region == "Canada" ~ "Inner circle",
+                                          region == "Great Britain" ~ "Inner circle",
+                                          region == "Ireland" ~ "Inner circle",
+                                          region == "New Zealand" ~ "Inner circle",
+                                          region == "United States" ~ "Inner circle",
+                                          T ~ "outer circle")) %>%
+  dplyr::mutate(country = dplyr::case_when(region == "Australia" ~ "au",
+                                           region == "Bangladesh" ~ "bd",
+                                           region == "Canada" ~ "ca",
+                                           region == "Great Britain" ~ "gb",
+                                           region == "Ghana" ~ "gh",
+                                           region == "Hong Kong" ~ "hk",
+                                          region == "Ireland" ~ "ie",
+                                          region == "India" ~ "in",
+                                          region == "Jamaica" ~ "jm",
+                                          region == "Kenya" ~ "ke",
+                                          region == "Malaysia" ~ "my",
+                                          region == "New Zealand" ~ "nz",
+                                          region == "Nigeria" ~ "ng",
+                                          region == "Pakistan" ~ "pk",
+                                          region == "Philippines" ~ "ph",
+                                          region == "Singapore" ~ "sg",
+                                          region == "South Africa" ~ "za",
+                                          region == "Sri Lanka" ~ "lk",
+                                          region == "Tanzania" ~ "tz",
+                                          region == "United States" ~ "us",
+                                          T ~ NA))  -> Figure2dat
+# inspect
+head(Figure2dat)
+```
+
+order
+
+```{r}
+# Get the order of Region based on the first facet
+region_order <- Figure2dat %>%
+  filter(genre == "private dialogue") %>%
+  arrange(Percent) %>%
+  pull(region)
+# inspect
+region_order
+```
+
+```{r}
+Figure2dat %>%
+  dplyr::mutate(region = factor(region, levels = region_order)) %>%
+  ggplot(aes(x = region,
+             y = Percent,
+             country = country, 
+             label = Percent, 
+             fill = genre)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  ggflags::geom_flag(aes(y = 0), size = 4) +
+  geom_text(color = "black", hjust = -0.2, size = 3, position = position_dodge(width = .9))+
+  coord_flip(ylim = c(0, 0.15)) +
+  scale_fill_manual(breaks = c("private dialogue", "public dialogue", "unscripted monologue", "scripted monologue"), 
+                    values = c("gray70", "gray70","gray70","gray70")) +
+  theme_bw() +
+  labs(xlab = "", ylab = "Percent") +
+  facet_wrap(. ~ genre, ncol = 4) +
+  theme(legend.position = "none",
+        legend.title = element_blank(),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.title.y=element_blank())
+ggsave(here::here("images", "Fig2.png"), width = 28, height = 14, units = "cm", dpi = 600)
+```
+
+# Table 2
+
+```{r}
+# Assuming 'res' is your initial data frame
+Table2 <- res %>%
+  ungroup() %>%
+  group_by(region, genre, file, speaker) %>%
+  summarise(
+    Tokens = sum(tokens, na.rm = TRUE),
+    VulgarTokens = sum(VulgarTokens, na.rm = TRUE),
+    VulgarSpeaker = sum(ifelse(VulgarTokens > 0, 1, 0), na.rm = TRUE)) %>%
+  dplyr::ungroup() %>%
+  dplyr::group_by(region, genre) %>%
+  dplyr::summarise(
+    Speakers = n(),
+    Tokens = sum(Tokens, na.rm = TRUE),
+    VulgarTokens = sum(VulgarTokens, na.rm = TRUE),
+    VulgarSpeakers = sum(VulgarSpeaker, na.rm = TRUE),
+    Percent = round(VulgarSpeakers / Speakers * 100, 1)) %>%
+  rename(
+    Region = region,
+    `Discourse Type` = genre
+  )
+
+# Calculate totals
+totals <- Table2 %>%
+  dplyr::ungroup()  %>%
+  summarise(
+    Region = "Total",
+    `Discourse Type` = "",
+    Speakers = sum(Speakers, na.rm = TRUE),
+    VulgarSpeakers = sum(VulgarSpeakers, na.rm = TRUE),
+    VulgarTokens = sum(VulgarTokens, na.rm = TRUE),
+    Tokens = sum(Tokens, na.rm = TRUE),
+    Percent = round(sum(VulgarTokens, na.rm = TRUE) / sum(Tokens, na.rm = TRUE) * 100, 1))
+
+# Bind the totals row to the original summary
+Table2 <- bind_rows(Table2, totals)
+
+# save 
+writexl::write_xlsx(Table2, here::here("tables", "Table2.xlsx"))
+# inspect
+Table2
+```
+
+
+
+# Figure 3
+
+```{r}
+Table2  %>%
+  dplyr::filter(Region != "Total") %>%
+  dplyr::mutate(Kachru = dplyr::case_when(Region == "Australia" ~ "Inner circle",
+                                          Region == "Canada" ~ "Inner circle",
+                                          Region == "Great Britain" ~ "Inner circle",
+                                          Region == "Ireland" ~ "Inner circle",
+                                          Region == "New Zealand" ~ "Inner circle",
+                                          Region == "United States" ~ "Inner circle",
+                                          T ~ "outer circle")) %>%
+  dplyr::mutate(country = dplyr::case_when(Region == "Australia" ~ "au",
+                                           Region == "Bangladesh" ~ "bd",
+                                           Region == "Canada" ~ "ca",
+                                           Region == "Great Britain" ~ "gb",
+                                           Region == "Ghana" ~ "gh",
+                                           Region == "Hong Kong" ~ "hk",
+                                          Region == "Ireland" ~ "ie",
+                                          Region == "India" ~ "in",
+                                          Region == "Jamaica" ~ "jm",
+                                          Region == "Kenya" ~ "ke",
+                                          Region == "Malaysia" ~ "my",
+                                          Region == "New Zealand" ~ "nz",
+                                          Region == "Nigeria" ~ "ng",
+                                          Region == "Pakistan" ~ "pk",
+                                          Region == "Philippines" ~ "ph",
+                                          Region == "Singapore" ~ "sg",
+                                          Region == "South Africa" ~ "za",
+                                          Region == "Sri Lanka" ~ "lk",
+                                          Region == "Tanzania" ~ "tz",
+                                          Region == "United States" ~ "us",
+                                          T ~ NA))   -> Fig3dat
+# inspect
+Fig3dat
+```
+
+determine order
+
+```{r}
+# Get the order of Region based on the first facet
+region_order <- Fig3dat %>%
+  filter(`Discourse Type` == "private dialogue") %>%
+  arrange(Percent) %>%
+  pull(Region)
+# inspect
+region_order
+```
+
+
+
+```{r}
+Fig3dat %>%
+  mutate(Region = factor(Region, levels = region_order),
+         `Discourse Type` = factor(`Discourse Type`, levels = c("private dialogue", "public dialogue", "unscripted monologue","scripted monologue")))    %>%
+  ggplot(aes(x = Region, 
+             y = Percent, 
+             country = country, 
+             label = Percent, 
+             fill = `Discourse Type`)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  ggflags::geom_flag(aes(y = 0), size = 4) +
+  geom_text(color = "black", hjust = -0.5, size = 3, position = position_dodge(width = .9))+
+  coord_flip(ylim = c(0, 40)) +
+  scale_fill_manual(breaks = c("private dialogue", "public dialogue", "unscripted monologue", "scripted monologue"), 
+                    values = c("gray70", "gray70","gray70","gray70")) +
+  theme_bw() +
+    facet_wrap(. ~ `Discourse Type`, ncol = 4) +
+  theme(legend.position = "none",
+        legend.title = element_blank(),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.title.y=element_blank()) +
+  labs(xlab = "", ylab = "Percent") 
+ggsave(here::here("images", "Fig3.png"), width = 28, height = 14, units = "cm", dpi = 600)
+```
+
+# Figure 4 (CTTR)
+
+```{r}
+#head(kwicsdf)
+kwicsdf   %>%
+  dplyr::filter(genre == "private dialogue") %>%
+  dplyr::group_by(region) %>%
+  dplyr::summarise(tokens = length(names(table(keyword))),
+                   types = length(names(table(lemma)))) %>%
+  dplyr::mutate(CTTR = round(types / (sqrt(2 * tokens)), 3)) %>%
+  dplyr::mutate(country = dplyr::case_when(region == "Australia" ~ "au",
+                                           region == "Bangladesh" ~ "bd",
+                                           region == "Canada" ~ "ca",
+                                           region == "Great Britain" ~ "gb",
+                                           region == "Ghana" ~ "gh",
+                                           region == "Hong Kong" ~ "hk",
+                                          region == "Ireland" ~ "ie",
+                                          region == "India" ~ "in",
+                                          region == "Jamaica" ~ "jm",
+                                          region == "Kenya" ~ "ke",
+                                          region == "Malaysia" ~ "my",
+                                          region == "New Zealand" ~ "nz",
+                                          region == "Nigeria" ~ "ng",
+                                          region == "Pakistan" ~ "pk",
+                                          region == "Philippines" ~ "ph",
+                                          region == "Singapore" ~ "sg",
+                                          region == "South Africa" ~ "za",
+                                          region == "Sri Lanka" ~ "lk",
+                                          region == "Tanzania" ~ "tz",
+                                          region == "United States" ~ "us",
+                                          T ~ NA))  -> Fig4dat
+Fig4dat
+```
+
+
+```{r}
+ggplot(Fig4dat, aes(x = CTTR, y = reorder(region, CTTR), country = country, label = CTTR)) +
+  geom_text(color = "black", hjust = -0.5, size = 3, position = position_dodge(width = .9))+
+  ggflags::geom_flag(size = 4) +
+  theme_bw() +
+  coord_cartesian(xlim = c(0, 4)) +
+  theme(legend.position = c(0.7, 0.3),
+        legend.title = element_blank(),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.title.y=element_blank()) +
+  labs(x = "Adjusted Corrected Type-Token Ratio (aCTTR)")
+ggsave(here::here("images", "Fig4.png"), width = 16, height = 12, units = "cm", dpi = 600)
+```
+
+
+
+
+# Figure 5 (lemmas)
+
+```{r}
+kwicsdf  %>%
+    dplyr::filter(genre == "private dialogue") %>%
+  group_by(region, lemma) %>%
+  dplyr::summarise(freq = n()) -> Fig5dat_1
+# inspect
+Fig5dat_1
+```
+
+
+```{r}
+res %>%
+  dplyr::group_by(region) %>%
+  dplyr::summarise(tokens = sum(tokens)) -> Fig5dat_2
+# inspect
+Fig5dat_2
+```
+
+
+```{r}
+dplyr::left_join(Fig5dat_2, Fig5dat_1) %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(rfreq = freq/tokens*1000000)  %>%
+  dplyr::mutate(lemma = ifelse(rfreq < 10, "other", lemma)) %>%
+  dplyr::group_by(region, lemma) %>%
+  dplyr::summarise(tokens = unique(tokens),
+                   freq = sum(freq))  %>%
+  dplyr::mutate(rfreq = freq/tokens*1000000) %>%
+  dplyr::group_by(region) %>%
+  dplyr::mutate(maxfreq = max(rfreq))  %>%
+  dplyr::mutate(country = dplyr::case_when(region == "Australia" ~ "au",
+                                           region == "Bangladesh" ~ "bd",
+                                           region == "Canada" ~ "ca",
+                                           region == "Great Britain" ~ "gb",
+                                           region == "Ghana" ~ "gh",
+                                           region == "Hong Kong" ~ "hk",
+                                          region == "Ireland" ~ "ie",
+                                          region == "India" ~ "in",
+                                          region == "Jamaica" ~ "jm",
+                                          region == "Kenya" ~ "ke",
+                                          region == "Malaysia" ~ "my",
+                                          region == "New Zealand" ~ "nz",
+                                          region == "Nigeria" ~ "ng",
+                                          region == "Pakistan" ~ "pk",
+                                          region == "Philippines" ~ "ph",
+                                          region == "Singapore" ~ "sg",
+                                          region == "South Africa" ~ "za",
+                                          region == "Sri Lanka" ~ "lk",
+                                          region == "Tanzania" ~ "tz",
+                                          region == "United States" ~ "us",
+                                          T ~ NA))  -> Fig5dat
+# inspect
+Fig5dat
+```
+
+```{r}
+Fig5dat %>%
+  ggplot(aes(x = reorder(region, maxfreq), y = rfreq, group = lemma, label = lemma, country = country, alpha = lemma)) +
+  geom_text(size = 3, position=position_jitter(width=.3,height=.3)) +
+  ggflags::geom_flag(aes(y = -10), size = 4) +
+  coord_flip() +
+  labs(x = "", 
+       y = "Relative frequency (per million words)",
+       alpha = "Vulgar lemma") +
+  #scale_alpha_manual(values = rep(.5, length(names(table(Fig5dat$lemma))))) +
+  scale_alpha_manual(values = c(0.5, 0.5, 0.5, 0.5, 0.5, 0.9,  0.5, 0.5, 0.5,  0.9, 0.5, 0.5)) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "top")
+ggsave(here::here("images", "Fig5.png"), width = 15, height = 20, units = "cm", dpi = 600)
+  
+```
+
+# Figure 6 (heatmap)
+
+```{r}
+kwicsdf %>%
+  dplyr::group_by(region, lemma) %>%
+  dplyr::summarise(freq = n(), .groups = "drop") %>%
+  mutate(z_score = scale(freq)) -> cfadat
+# inspect
+head(cfadat)
+```
+
+
+# Outro
+
+```{r}
+sessionInfo()
+```
+
+

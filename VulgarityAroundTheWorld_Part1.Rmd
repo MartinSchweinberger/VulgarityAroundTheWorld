@@ -1,0 +1,1270 @@
+---
+title: "Vulgarity in face-to-face interaction across selected varieties of English - Part 1: Data Pre-processing"
+output: html_document
+date: "2025-06-02"
+---
+
+# Introduction
+
+# Preparation
+
+installing packages
+
+```{r eval = F}
+install.packages("tidyverse")
+install.packages("dplyr")
+install.packages("tidyr")
+install.packages("stringr")
+install.packages("stringi") 
+install.packages("forcats")
+install.packages("lubridate")
+install.packages("here")
+```
+
+
+activating packages
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(stringi)
+library(forcats)
+library(lubridate)
+library(here)
+```
+
+loading data
+
+define paths
+
+```{r eval = T}
+iceausfl <- list.files(here::here("D:\\corpora\\ICE Australia"), full.names = T, pattern = ".txt", recursive = T, ignore.case = T, include.dirs = T)
+icecanfl <- list.files(here::here("D:\\corpora\\ICE CAN\\Corpus"), full.names = T, pattern = ".txt", recursive = T, ignore.case = T)
+icegbfl <- list.files(here::here("D:\\corpora\\ICE GB2 Plaintext"), full.names = T, pattern = ".txt", recursive = T, ignore.case = T, include.dirs = T)
+icehkfl <- list.files(here::here("D:\\corpora\\ICE Hong Kong"), full.names = T, pattern = ".txt", recursive = T, ignore.case = T, include.dirs = T)
+iceindfl <- list.files(here::here("D:\\corpora\\ICE India\\Corpus"), full.names = T, pattern = ".txt", recursive = T, ignore.case = T, include.dirs = T)
+iceirefl <- list.files(here::here("D:\\corpora\\ICE Ireland version 1.2.2\\ICE-Ireland txt\\ICE spoken running txt"), full.names = T, pattern = ".txt", recursive = T, ignore.case = T, include.dirs = T)
+icejamfl <- list.files(here::here("D:\\corpora\\ICE Jamaica"), full.names = T, pattern = ".txt", recursive = T, ignore.case = T, include.dirs = T)
+icenzfl <- list.files(here::here("D:\\corpora\\ICE New Zealand\\Spoken"), full.names = T, pattern = ".txt", recursive = T, ignore.case = T, include.dirs = T)
+icephifl <- list.files(here::here("D:\\corpora\\ICE Philippines\\Corpus"), full.names = T, pattern = ".txt", recursive = T, ignore.case = T, include.dirs = T)
+icesgfl <- list.files(here::here("D:\\corpora\\ICE SINGAPORE\\Corpus"), full.names = T, pattern = ".txt", recursive = T, ignore.case = T, include.dirs = T)
+#icenigfl <- list.files(here::here("D:\\corpora\\ice-nig\\txt - with speaker tags\\spoken"), full.names = T, pattern = ".txt", recursive = T, ignore.case = T, include.dirs = T)
+icesrlfl <- list.files(here::here("D:\\corpora\\ICE-SL\\ICE-SL\\Plain-text version\\Spoken"), full.names = T, pattern = ".txt", recursive = T, ignore.case = T, include.dirs = T)
+sbcfl <- list.files(here::here("D:\\corpora\\SBCorpus\\corpusdata\\TRN"), full.names = T, pattern = ".trn", recursive = T, ignore.case = T, include.dirs = T)
+
+icefl <- c(iceausfl, icecanfl, icegbfl, icehkfl, iceindfl, iceirefl, icejamfl, icenzfl, icephifl, icesgfl, icesrlfl, sbcfl)
+
+# remove written files
+icefl <- icefl[!stringr::str_detect(icefl, "W1|W2|/w1|/w2")]
+
+# inspect
+str(icefl)
+```
+
+loading corpus data
+
+```{r eval = T}
+corpus <- sapply(icefl, function(x) {
+  x <- scan(x,
+    what = "char",
+    sep = "",
+    quote = "",
+    quiet = T,
+    skipNul = T,
+    encoding = "latin1"
+  )
+  x <- paste0(x, sep = " ", collapse = " ")
+  x <- stringr::str_squish(x)
+})
+# inspect
+str(corpus)
+```
+
+# Data Processing
+
+## East Africa
+
+```{r eval = T}
+iceeafl <- list.files(here::here("D:\\corpora\\ICE East Africa\\ICE-EA\\CORPUS\\spoken-ice-ea"), full.names = T, pattern = ".rtf", recursive = T, ignore.case = T, include.dirs = T)
+ea <- sapply(iceeafl, function(x) {
+  x <- scan(x,
+    what = "char",
+    sep = "",
+    quote = "",
+    quiet = T,
+    skipNul = T
+  )
+  x <- paste0(x, sep = " ", collapse = " ")
+  x <- stringr::str_squish(x)
+})
+# inspect
+str(ea)
+```
+
+split East Africa into files
+
+```{r eval = T}
+eaf <- stringr::str_split(stringr::str_replace_all(ea, "(S\\d[A-Z]{1}\\d{3,3}[TK]{1,1})", "~~~\\1"), "~~~") %>% unlist()
+eafl <- stringr::str_remove_all(eaf, " .*")
+dea <- data.frame(1:length(eaf), eafl, eaf)
+dea <- dea %>%
+  dplyr::filter(!stringr::str_detect(eafl, fixed("rtf1\ansi"))) %>%
+  dplyr::filter(!stringr::str_detect(eafl, fixed("rtf1\\ansi"))) %>%
+  dplyr::filter(!stringr::str_detect(eafl, fixed("Martin"))) %>%
+  dplyr::rename(id = 1,
+                file = 2,
+                corpus = 3) %>%
+  dplyr::mutate(corpus = stringr::str_remove_all(corpus, fixed("\\par }{\\v\\fs24\\lang2057"))) %>%
+  dplyr::mutate(corpus = stringr::str_remove_all(corpus, "\\}{0,1}\\\\.*? ")) %>%
+  dplyr::mutate(corpus = stringr::str_remove_all(corpus, fixed("{<&_>"))) %>%
+  dplyr::mutate(corpus = stringr::str_remove_all(corpus, fixed("<&_>"))) %>%
+  dplyr::mutate(corpus = stringr::str_remove_all(corpus, fixed("}{")))
+# inspect
+head(dea)
+```
+
+ice east africa speakerinfo
+
+```{r eval = T}
+sea <- dea %>%
+  dplyr::mutate(speaker = stringr::str_remove_all(corpus, "<I>.*")) %>%
+  dplyr::select(-corpus) %>%
+  dplyr::mutate(speaker = stringr::str_replace_all(speaker, "(\\<\\$[A-Z]\\>)", "qwertz\\1")) %>%
+  tidyr::separate_rows(speaker, sep = "qwertz") %>%
+  dplyr::mutate(sex = dplyr::case_when(stringr::str_detect(speaker, "\\bm\\b") ~ "male",
+                                       stringr::str_detect(speaker, "\\b[Mm]ale\\b") ~ "male",
+                                       stringr::str_detect(speaker, "\\b[Mm]r\\b") ~ "male",
+                                       stringr::str_detect(speaker, "\\b[Cc]hairman\\b") ~ "male",
+                                       stringr::str_detect(speaker, "\\b[Mm]inister\\b") ~ "male",
+                                       stringr::str_detect(speaker, "\\bf\\b") ~ "female",
+                                       stringr::str_detect(speaker, "\\b[Mm]rs\\b") ~ "female",
+                                       stringr::str_detect(speaker, "\\b[Mm]s\\b") ~ "female",
+                                       stringr::str_detect(speaker, "\\b[Mm]iss\\b") ~ "female",
+                                       stringr::str_detect(speaker, "\\b[Ff]emale\\b") ~ "female",
+                                       stringr::str_detect(speaker, "\\bLoise\\b") ~ "female",
+                                       stringr::str_detect(speaker, "\\bJames\\b") ~ "male",
+                                       stringr::str_detect(speaker, "\\bJosephine\\b") ~ "female",
+                                       stringr::str_detect(speaker, "\\bLucy\\b") ~ "female",
+                                       stringr::str_detect(speaker, "\\bJohn\\b") ~ "male",
+                                       stringr::str_detect(speaker, "\\bEzekiel\\b") ~ "male",
+                                       stringr::str_detect(speaker, "\\bMichael\\b") ~ "male",
+                                       stringr::str_detect(speaker, "\\bLouise\\b") ~ "female",
+                                       stringr::str_detect(speaker, "\\bRuth\\b") ~ "female",
+                                       stringr::str_detect(speaker, "\\bSarah\\b") ~ "female",
+                                       stringr::str_detect(speaker, "\\bHarold\\b") ~ "male",
+                                       stringr::str_detect(speaker, "\\bJohnson\\b") ~ "male",
+                                       stringr::str_detect(speaker, "\\bFelix\\b") ~ "male",
+                                       stringr::str_detect(speaker, "\\bAlex\\b") ~ "male",
+                                       stringr::str_detect(speaker, "\\bLea\\b") ~ "female",
+                                       stringr::str_detect(speaker, "\\bHenry\\b") ~ "male",
+                                       stringr::str_detect(speaker, "\\bEdwin\\b") ~ "male",
+                                       stringr::str_detect(speaker, "\\bHelen\\b") ~ "female",
+                                       stringr::str_detect(speaker, "\\bHorace\\b") ~ "male",
+                                       stringr::str_detect(speaker, "\\bGoro\\b") ~ "male",
+                                       T ~ NA)) %>%
+  dplyr::mutate(age = stringr::str_replace_all(speaker, ".*\\b([0-9]{2,2})\\b.*", "\\1")) %>%
+  dplyr::mutate(age = dplyr::case_when(stringr::str_detect(speaker, "\\b[0-9]{2,2}\\b") ~ age,
+                                       T ~ NA)) %>%
+  dplyr::filter(stringr::str_detect(speaker, fixed("<$"))) %>%
+  dplyr::mutate(speakerfull = speaker) %>%
+  dplyr::mutate(speaker = stringr::str_remove_all(speaker, " .*"),
+                speaker = stringr::str_remove_all(speaker, ">.*"),
+                speaker = stringr::str_remove_all(speaker, "\\W"))
+# Save the cleaned data
+saveRDS(sea, here::here("tables/ICE_EastAfrica_Speakerinformation.rds"))
+# inspect
+head(sea, 200)
+```
+
+
+```{r}
+dea <- dea %>%
+  dplyr::mutate(corpus = stringr::str_remove(corpus, "^.*?<I>"))
+# inspect
+head(dea)
+```
+
+
+## Other varieties
+
+generate data frame
+
+```{r eval = T}
+df <- data.frame(1:length(icefl), icefl, corpus) %>%
+  dplyr::rename(id = 1,
+                file = 2,
+                corpus = 3) %>%
+  dplyr::bind_rows(dea)
+# inspect
+head(df)
+```
+
+split into utterances
+
+```{r eval = T}
+dfs <- df %>%
+  # Step 1: Insert marker 'qwertz' before speaker tags
+  mutate(
+    corpus = str_replace_all(
+      corpus,
+      "(<[^>]*[\\$:][^>]*>|\\b[A-Z]{3,}[0-9]{0,2}:)",
+      "qwertz\\0")) %>%
+
+  # Step 2: Split corpus into individual turns based on 'qwertz' marker
+  separate_rows(corpus, sep = "qwertz")
+# inspect
+head(dfs)
+```
+
+add region
+
+```{r eval = T}
+dfs2 <- dfs %>%
+  # Step 3: Strip angled brackets (remove metadata) and normalize whitespace
+  mutate(
+    clean = corpus %>%
+      str_remove_all("<[@OX].*?/[@OX]>|<.*?>") %>%  # Combine tag removal
+      str_squish()
+    ) %>%
+  filter(clean != "")  %>%
+
+  # Step 4: Assign region based on file name patterns
+  mutate(
+    region = case_when(
+      str_detect(file, "Australia") ~ "Australia",
+      str_detect(file, "ICE CAN") ~ "Canada",
+      str_detect(file, "ICE Philippines") ~ "Philippines",
+      str_detect(file, "ICE SINGAPORE") ~ "Singapore",
+      str_detect(file, "[0-9]T[AB]{0,2}$") ~ "Tanzania",
+      str_detect(file, "[0-9]T[\\}\\<\\)].*?$") ~ "Kenya",
+      str_detect(file, "[0-9]K[AB]{0,2}$") ~ "Kenya",
+      str_detect(file, "[0-9]K[\\}\\<\\)].*?$") ~ "Kenya",
+      str_detect(file, "ICE GB2 Plaintext") ~ "Great Britain",
+      str_detect(file, "Hong Kong") ~ "Hong Kong",
+      str_detect(file, "India") ~ "India",
+      str_detect(file, "Ireland") ~ "Ireland",
+      str_detect(file, "Jamaica") ~ "Jamaica",
+      str_detect(file, "ICE New Zealand") ~ "New Zealand",
+      str_detect(file, "ice-nig") ~ "Nigeria",
+      str_detect(file, "ICE-SL") ~ "Sri Lanka",
+      str_detect(file, "SBCorpus") ~ "United States",
+      TRUE ~ file)) 
+# inspect
+head(dfs2); table(dfs2$region)
+```
+
+
+
+```{r eval = T}
+dfs3 <- dfs2 %>%
+  # Normalize speaker tag spacing and extract speaker codes
+  mutate(
+    speaker = str_replace_all(corpus, "\\>.*", ">"),
+    speaker = str_replace_all(speaker, ".*<.*[$:] {0,1}([A-Z][0-9]{0,2}\\?{0,1})>", "\\1"),
+    speaker = str_remove_all(speaker, ":.*"))  %>%
+  # Remove obviously erroneous speaker tags longer than 10 characters
+  mutate(
+    speaker = if_else(nchar(speaker) > 10, NA, speaker))
+# inspect
+head(dfs3)
+```
+
+
+
+
+```{r eval = T}
+dfs4 <- dfs3  %>%
+
+  # U.S.-specific noise removal: timestamps, codes, non-words
+  mutate(
+    clean = if_else(region == "United States",
+                    str_remove_all(clean, "[A-Z]{3,}|.*?:|[0-9]+\\.[0-9]+\\.?[0-9]*\\.?[0-9]*|\\([A-Z]\\)|[^[:alnum:] ]|\\W[0-9]"),
+                    clean)) %>%
+    mutate(
+    clean = if_else(region == "United States",
+                    str_remove_all(clean, "[0-9]+|[A-Z]{2,}"),
+                    clean)) %>%
+      mutate(
+    file = str_replace_all(file, ".*/(.*?)\\..*", "\\1") %>%
+      toupper()) %>%
+
+  # Final clean-up of whitespace-only lines
+  filter(clean != "")
+
+# Quick preview
+head(dfs4)
+```
+
+
+```{r eval = T}
+dfs5 <- dfs4 %>%
+  dplyr::mutate(file = stringr::str_remove_all(file, " .*"),
+                file = stringr::str_remove_all(file, "-[0-9]{1,2}$"),
+                file = stringr::str_remove_all(file, "\\W"),
+                file = stringr::str_remove_all(file, "[KT].*$")) %>%
+  dplyr::mutate(speaker = toupper(speaker),
+                speaker = stringr::str_remove_all(speaker, "\\W"),
+                speaker = ifelse(stringr::str_detect(speaker, "S[1|2]"), NA, speaker),
+                speaker = ifelse(speaker == "", NA, speaker)) %>%
+  dplyr::mutate(clean = stringr::str_squish(clean))
+
+# Quick preview
+head(dfs5); names(table(dfs5$file))
+```
+
+
+```{r eval = T}
+# Save the cleaned data
+saveRDS(dfs5, here::here("data/dfs.rds"))
+```
+
+
+
+load data
+
+```{r}
+dfs <- readRDS(here::here("data/dfs.rds"))
+# inspect
+head(dfs)
+```
+
+```{r}
+dfs %>%
+  dplyr::filter(region == "Tanzania")
+```
+
+cleaning
+
+```{r}
+dfs <- dfs %>%
+  dplyr::mutate(clean = stringr::str_remove_all(clean, "\\bS[12][AB][0-9]{3,3}[A-Z]{1,2}\\b"))
+dfs %>%
+  dplyr::filter(region == "Tanzania")
+```
+
+
+
+## Biodata
+
+loading biodata
+
+```{r}
+# Australia
+spaus <- read.delim(here::here("D:\\corpora\\0_metadata\\ICE Australia biodata/biodataiceaus.txt"), sep = "\t") %>% 
+  dplyr::rename(speaker = spk, age2 = age, age = agecat, sex = gender, date = date_of_recording, audience2 = audience, audience = no_of_participants, subfile.id = subfile) %>%
+  dplyr::mutate(region = "Australia",
+                date = as.character(date),
+                subfile.id = as.character(subfile.id),
+                audience = as.character(audience),
+                file = stringr::str_remove_all(file, "\\W"))
+# inspect
+colnames(spaus)
+
+# Canada
+spican <- read.delim(here::here("tables/BiodataIceCanada.txt"), sep = "\t") %>% 
+  dplyr::rename(file = text.id, speaker = spk.ref, sex = gender) %>%
+  dplyr::mutate(region = "Canada",
+                age.exact = as.character(age.exact),
+                date = as.character(date),
+                subfile.id = as.character(subfile.id),
+                file = stringr::str_remove_all(file, "\\W"))
+# inspect
+colnames(spican)
+
+# Great Britain
+spigb <- read.delim(here::here("tables/BiodataIceGbR2.txt"), sep = "\t") %>% 
+  dplyr::rename(file = file.id, speaker = spk.ref, education2 = education, education = ed.lev) %>% 
+  dplyr::mutate(region = "Great Britain",
+                subfile.id = as.character(subfile.id),
+                file = stringr::str_remove_all(file, "\\W"))
+# inspect
+colnames(spigb)
+
+# Hong Kong
+spihk <- read.delim(here::here("tables/BiodataIceHongKong_new.txt"), sep = "\t") %>% 
+  dplyr::rename(file = Textcode, speaker = Speaker.ID, age = Age, sex = Gender, education = Educational.Level, date = Recording.Date, subfile.id = Subtext) %>%
+  dplyr::mutate(region = "Hong Kong",
+                subfile.id = as.character(subfile.id),
+                date = as.character(date),
+                file = stringr::str_remove_all(file, "\\W"))
+# inspect
+colnames(spihk)
+
+# India
+spind <- read.delim(here::here("tables/BiodataIceIndia.txt"), sep = "\t") %>% 
+  dplyr::rename(file = text.id, speaker = spk.ref, sex = gender, date = date.of.recording, audience = audience.size) %>%
+  dplyr::mutate(region = "India",
+                date = as.character(date),
+                subfile.id = as.character(subfile.id),
+                file = stringr::str_remove_all(file, "\\W"))
+# inspect
+colnames(spind)
+
+# Ireland
+spire <- read.delim(here::here("tables/BiodataIceIreland.txt"), sep = "\t") %>% 
+  dplyr::rename(file = text.id, speaker = spk.ref, education = ed.lev, subfile.id = subfile) %>%
+  dplyr::mutate(region = "Ireland",
+                date = as.character(date),
+                subfile.id = as.character(subfile.id),
+                file = stringr::str_remove_all(file, "\\W"))
+# inspect
+colnames(spire)
+
+# Jamaica
+spjam <- read.delim(here::here("tables/BiodataIceJamaica.txt"), sep = "\t") %>% 
+  dplyr::rename(file = text.id, speaker = spk.ref, education2 = education, education = education.level) %>%
+  dplyr::mutate(region = "Jamaica",
+                date = as.character(date),
+                subfile.id = as.character(subfile.id),
+                file = stringr::str_remove_all(file, "\\W"))
+# inspect
+colnames(spjam)
+
+# New Zealand
+spinz <- read.delim(here::here("tables/BiodataIceNewZealand.txt"), sep = "\t") %>% 
+  dplyr::rename(file = text.id, speaker = spk.ref) %>%
+  dplyr::mutate(region = "New Zealand",
+                subfile.id = as.character(subfile.id),
+                file = stringr::str_remove_all(file, "\\W"))
+# inspect
+colnames(spinz)
+
+# Philippines
+spiphi <- read.delim(here::here("tables/BiodataIcePhilippines.txt"), sep = "\t") %>% 
+  dplyr::rename(file = text.id, speaker = spk.ref, sex = gender, education = educational.level, date = recording.date) %>%
+  dplyr::mutate(region = "Philippines",
+                subfile.id = as.character(subfile.id),
+                date = as.character(date),
+                file = stringr::str_remove_all(file, "\\W"))
+# inspect
+colnames(spiphi)
+
+# Singapore
+spisg <- read.delim(here::here("tables/BiodataIceSingapore.txt"), sep = "\t") %>% 
+  dplyr::rename(file = text.id, speaker = speaker.id) %>%
+  dplyr::mutate(region = "Singapore",
+                subfile.id = as.character(subfile.id),
+                file = stringr::str_remove_all(file, "\\W"))
+# inspect
+colnames(spisg)
+
+# United States
+spius <- read.delim(here::here("tables/BiodataSbcae.txt"), sep = "\t") %>% 
+  dplyr::rename(file = text.id, speaker = spk.ref, sex = gender, education = ed.level) %>% 
+  dplyr::mutate(region = "United States",
+                age.exact = as.character(age.exact),
+                file = stringr::str_remove_all(file, "\\W"))
+# inspect
+colnames(spius)
+
+# East Africa
+spiea <- readRDS(here::here("tables/ICE_EastAfrica_Speakerinformation.rds")) %>% 
+  dplyr::mutate(region = ifelse(stringr::str_detect(file, "T$"), "Tanzania", "Kenya"),
+                file = stringr::str_remove_all(file, "\\W")) %>%
+  dplyr::mutate(file = stringr::str_remove_all(file, "[T|K]$"))
+# inspect
+colnames(spiea)
+
+```
+
+
+combine into a single table
+
+
+```{r}
+spkdf <- bind_rows(spaus, spican, spigb, spihk, spind, spire, spjam, spinz, spiphi, spisg, spius, spiea) %>%
+  dplyr::mutate(mothertongue = ifelse(is.na(mothertongue), X1st.lg, mothertongue),
+                mothertongue = ifelse(is.na(mothertongue), Mother.Tongue, mothertongue),
+                mothertongue = ifelse(is.na(mothertongue), mother.tongue, mothertongue),
+                mothertongue = ifelse(stringr::str_detect(mothertongue, "nglish"), "English", "notEnglish"))
+```
+
+```{r}
+spkdf <- spkdf %>%
+  
+  # normalise age
+  dplyr::mutate(age = dplyr::case_when(as.numeric(age) < 19 ~ "0-18",
+                                       as.numeric(age) < 26 ~ "19-25",
+                                       as.numeric(age) < 34 ~ "26-33",
+                                       as.numeric(age) < 42 ~ "34-41",
+                                       as.numeric(age) < 50 ~ "42-49",
+                                       as.numeric(age) > 49 ~ "50+",
+                                       T ~ age)) %>%
+  dplyr::mutate(age = dplyr::case_when(
+    age %in% c("51-80", "51-60", "60+", "66+", "51-55", "56-60", "60 or above",
+               "50-54", "55-59", "60-64", "65-69", "70-74", "61+") ~ "50+",
+    age %in% c("14-16", "17-20") ~ "10-20", 
+    age %in% c("31-35", "36-40") ~ "31-40",
+    age %in% c("41-45", "41-46", "46-50", "40-44", "45-49") ~ "41-50",
+    age %in% c("25-29", "30-34") ~ "26-33",
+    TRUE ~ age)) %>%
+  
+  dplyr::mutate(age = dplyr::case_when(
+    age %in% c("0-18", "10-20", "16-19", "16-20") ~ "10-18", 
+    age %in% c("17-25", "18-25", "19-24", "20-24", "21-25") ~ "19-25",
+    age %in% c("25-30", "26-30") ~ "26-33",
+    age %in% c("35-39", "31-40") ~ "34-41",
+    age %in% c("45-50", "42-49", "41-50") ~ "42-49",
+    age %in% c("46-65", "46+") ~ "50+",
+    age == "" ~ NA_character_,
+    TRUE ~ age))
+```
+
+```{r}
+spkdf <- spkdf %>%
+  # normalise sex
+  dplyr::mutate(sex = dplyr::case_when(stringr::str_detect(tolower(sex), ".*f.*") ~ "female",
+                                       sex == "n/a" ~ NA,
+                                       sex == "" ~ NA,
+                                       stringr::str_detect(sex,"^[M|m|male]$") ~ "male",
+                                       T ~ sex))
+```
+
+
+```{r}
+spkdf %>%
+  dplyr::group_by(region, date) %>%
+  dplyr::summarise(freq = n())
+```
+
+
+```{r}
+ spkdf <- spkdf %>%
+  # normalise date
+  dplyr::mutate(date = case_when(
+    date == "33827" ~ "15/07/1992",
+    date == "33850" ~ "07/08/1992",
+    date == "33864" ~ "21/08/1992",
+    date == "34106" ~ "20/04/1993",
+    date == "34108" ~ "22/04/1993",
+    date == "34218" ~ "10/08/1993",
+    date == "34278" ~ "09/10/1993",
+    date == "34455" ~ "05/03/1994",
+    date == "34721" ~ "26/11/1994",
+    date == "34989" ~ "21/08/1995",
+    TRUE ~ date
+  ))  %>%
+  dplyr::mutate(date = stringr::str_replace_all(date, ".*\\W([0-9]{2,4})$", "\\1")) %>%
+  dplyr::mutate(date = dplyr::case_when(
+    date %in% c("n/d", "unknown") ~ NA,
+    date == "00" ~ "2000",
+    date %in% c("01", "201") ~ "2001",
+    date == "02" ~ "2002",
+    date == "03" ~ "2003",
+    date == "90" ~ "1990",
+    date == "91" ~ "1991",
+    date == "92" ~ "1992",
+    date == "93" ~ "1993",
+    date == "94" ~ "1994",
+    date == "95" ~ "1995",
+    date == "96" ~ "1996",
+    date == "97" ~ "1997",
+    date %in% c("c1999", "c1998 or c1999") ~ "1999",
+    TRUE ~ date))
+```
+
+
+```{r}
+spkdf <- spkdf %>%
+  
+  # normalise file
+  dplyr::mutate(file = toupper(stringr::str_remove_all(file, "\\W"))) %>%
+  
+  # normalise file
+  dplyr::mutate(speaker = toupper(stringr::str_remove_all(speaker, "\\W"))) %>%
+  
+  # add id
+  dplyr::mutate(spkid = 1:nrow(.)) %>%
+  
+  # remove superfluous columns
+  dplyr::select(spkid, region, file, subfile.id, speaker, sex, age, date, education, occupation, mothertongue, audience) %>%
+  
+  # add audience size
+  dplyr::group_by(region, file) %>%
+  dplyr::mutate(audience = n()) %>%
+  
+  # ungroup
+  dplyr::ungroup()
+
+# inspect
+head(spkdf)
+```
+
+```{r}
+spkdf %>%
+  dplyr::filter(region == "United States") %>%
+  head(10)
+```
+
+```{r}
+dfs %>%
+  dplyr::filter(region == "United States") %>%
+  head(10)
+```
+
+## Full Data Frame
+
+combine with corpus
+
+```{r}
+ice <- dplyr::left_join(dfs, spkdf, by = c("region", "file", "speaker")) %>%
+  dplyr::mutate(tokens = str_count(clean, "\\S+")) %>%
+  dplyr::mutate(genre = dplyr::case_when(
+    stringr::str_detect(file, "S1A") ~ "private dialogue",
+    stringr::str_detect(file, "S1B") ~ "public dialogue",
+    stringr::str_detect(file, "S2A") ~ "unscripted monologue",
+    stringr::str_detect(file, "S2B") ~ "scripted monologue",
+    stringr::str_detect(file, "SBC") ~ "private dialogue",
+    T ~ file)) %>%
+  dplyr::mutate(text = paste0("text", 1:nrow(.)))
+
+# inspect
+head(ice)
+
+```
+
+checks
+
+```{r}
+ice %>%
+  dplyr::filter(stringr::str_detect(clean, "\\Wf,"))
+```
+
+```{r}
+# Save the cleaned data
+saveRDS(ice, here::here("tables/ice.rds"))
+```
+
+
+## Regex
+
+define regex lists
+
+The regex list represents is based on:
+
+List of Bad Words, February 2025.
+http://www.noswearing.com/dictionary/.
+
+BannedWordList.com - a resource for web
+administrators, March 2013.
+http://www.bannedwordlist.com/.
+
+McEnery, Anthony. 2006. Swearing in English: Bad Language, Purity and Power from 1586 to the Present. New York: Routledge. 
+
+Thelwall, Mike. 2008. “Fk Yea I Swear: Cursing and Gender in MySpace.” Corpora 3 (1): 83–107. doi:10.3366/E1749503208000087. 
+
+Coats, S. (2021). ‘Bad language’ in the Nordics: Profanity and gender in a social media corpus. Acta Linguistica Hafniensia, 53(1), 22–57. https://doi.org/10.1080/03740463.2021.1871218
+
+Love, R. (2021). Swearing in informal spoken English: 1990s–2010s. Text & Talk, 41(5-6), 739-762.
+
+After reviewing the items deemed vulgar in the above publications, we decided which to include as we did not consider all elements in the publications as vulgar. The items we thus deemed as vulgar after reviewing are listed below. 
+
+arse, arsehole, ass, asshole, bastard, beaner, bellend, bimbo, bitch, bloody,
+bollock, boner, bonk, boob, bugger, bullshit, butt, butthead, butthole, chink, 
+cock, coon, crap, cum, cunt, damn, darkie, dick, dike, dildo, dipshit, dork, 
+eff, fag, fanny, fart, feck, frig, fuck, gash, gook, hell, hussy, idiot, 
+jackass, jap, jerk, jiss, jug, kike, knocker, lesbo, minger, moron, 
+motherfucker, muff, nonce, nympho, pecker, pedo, pikey, pimp, piss,  
+poofter,  prick, puke, pussy, queef, retard,  shag, shit, shite, skank, 
+slag, slut, sod, spastic, tit, tosser, tranny, turd, twat, wank, 
+whore, online (such as wtf, lmao, etc)
+
+The regular expression list below is designed to capture these and variants of these elements.
+
+Vector of regular expressions for detecting vulgar language and obfuscations
+
+```{r eval = T}
+patterns <- c(
+  # "arsehole/s"
+  "\\b(dumb|stupid|lazy|worthless|useless|brain|dead|jack)*[a@4äáå]r[s5$§z][e3€ëéê][h]?[o0øöóõ]*[l1£][e3€ëéê]*[s5$§z]*\\b",
+
+  # "ass/asshole/s"
+  "\\b(dumb|stupid|lazy|worthless|useless|brain|dead|jack)*[a@4äáå][s5$§z]{2,}[h]?[o0øöóõ]*[l1|£][e3€ëéê]*[s5$§z]*\\b",
+
+  # "bitch"
+  "\\b[8ß|3][i1!|ïíì]+[a@4äáå]*[t7+†][c¢©(][h](es|ez|ing|ed)*\\b",
+
+  # "bastard"
+  "\\b[8ß|3][a@4äáå][s5$§z][t7+†][a@4äáå]r[d][o]*(s|z)*\\b",
+
+  # "beaner"
+  "\\b[8ß|3][e3€ëéê][a@4äáå]n[e3€ëéê]r(s|z)*\\b",
+
+  # "bellend"
+  "\\b[8ß|3][e3€ëéê]ll[e3€ëéê]nd(s|z)*\\b",
+
+  # "bimbo"
+  "\\b[8ß|3][1!|ïíì]mb[o0øöóõ](s|z)*\\b",
+
+  # "bloody"
+  "\\bbl[o0øöóõ]{2,}d[iy¥](ed)*\\b",
+
+  # "bollocks"
+  "\\b[8ß|3][o0øöóõ]ll[o0øöóõiïíì][xc¢©(k|<{(]+[s5$§z]?\\b",
+
+  # "boner"
+  "\\bboner[s]*\\b",
+
+  # "bonk"
+  "\\b[8ß|3][o0øöóõ]n[k|<{(](in|ing)*\\b",
+
+  # "boobs"
+  "\\b[8ß|3][o0øöóõ]{2,}[b8ß|3][ie]*[s5$§z]?\\b",
+
+  # "bugger"
+  "\\b[8ß|3][u|µüúû]gg[e3€ëéê]r(ing|s|z)*\\b",
+
+  # "bullshit"
+  "\\b[b8ß|3][u|µüúû]ll[s5$§z]h[1!|ïíì]+[t7+†]*\\b",
+
+  # "butt"
+  "\\b[b8ß3][uµüúû][t7+†][t7+†][sz]*(face|head|wit|whipe|hole|h)*[hl]*[sz]*\\b",
+
+  # "damn"
+  "\\b(god)*damn\\b",
+
+  # "darkie"
+  "\\bdarki(es)*\\b",
+
+  # "dike"
+  "\\b(bull)*d[iy]*ke(s|z)*\\b",
+
+  # "dildo"
+  "\\bdildo(s|z)*\\b",
+
+  # "dork"
+  "\\bdork(s|z)*\\b",
+
+  # "eff"
+  "\\beff(ing|in|ed|d)*\\b",
+
+
+  # "fanny"
+  "\\bfann(y|ies)+\\b",
+
+  # "fart"
+  "\\bfart(s|z|ing|in|ed)*\\b",
+
+  # "frig"
+  "\\bfrig(g|gin|ging|ged|gs)*\\b",
+
+  # Detects "fuck" variations
+  "\\b(cluster|head|mother|motha|mutha|mada|cock|mom|mum|daddy|father|sister|brother)*[f=ƒ][uµüúû|@a4äáå|e3€ëéê|o0øöóõ|*]*[c¢©(]*[k|<{(][e3€ëéê]*[r]*(head|face|wit|ing|er|a|ed|ers|az)*\\b",
+  "\\b[f=ƒ][c¢©(*k<{(uµüúû*]+(ing|er|a|ed|ers|az)*\\b",
+
+  # Detects "fuck" variations as 'f'
+  "\\bf\\b",
+
+  # "gash"
+  "\\bgash\\b",
+
+  # "gook"
+  "\\bg[o]*ok(s|z)*\\b",
+
+  # "idiot"
+  "\\bidiot(s|z)*\\b",
+
+  # "jackass"
+  "\\bjacka[s5$§z][s5$§z]\\b",
+
+  # "jap"
+  "\\bjap[zs]*\\b",
+
+  # "jerk"
+  "\\bjerk(s|z|in|ing|ed)*\\b",
+
+  # "jiss"
+  "\\bji[s5$§z][s5$§z]+\\b",
+
+  # "jug"
+  "\\bjug[g]*[s5$§z]*\\b",
+
+  # "shit"
+  "\\b[(dip)]*[s5$§z]h[1!|ïíì]+[t7+†]*(ing|e|in|er|a|ed|ers|az|s|z)*\\b",
+
+  # Online variants
+
+  # Knock the f*** out
+  "\\bktfo\\b",
+
+  # Shut the f*** up
+  "\\bstfu\\b",
+
+  # Get the f*** out
+  "\\bgtfo\\b",
+
+  # Not giving a f***
+  "\\bngaf\\b",
+
+  # Don't give a f***
+  "\\bdgaf\\b",
+
+  # For f***'s sake
+  "\\bffs\\b",
+
+  # F*** my life
+  "\\bfml\\b",
+
+  # Oh my f***ing god
+  "\\bomfg\\b",
+
+  # As f***
+  "\\baf\\b",
+
+  # The f***
+  "\\btf\\b",
+
+  # What the f***
+  "\\bwtf\\b",
+
+  # Laughing my ass off
+  "\\blmao\\b",
+
+  # Laughing my f***ing ass off
+  "\\blmfao\\b",
+
+  # Rolling on floor laughing
+  "\\brofl\\b",
+
+  # "chink"
+  "\\bch[i]*nk[zs]*\\b",
+
+  # "coon"
+  "\\bcoon[zs]*\\b",
+
+  # "crap"
+  "\\b[bull]*crap(ping|ped|s|z|pin)*\\b",
+
+  # "cum"
+  "\\bcum(ming)*\\b",
+
+  # "cock"
+  "\\bc[o0øöóõ][c¢©]+[(k|<{(|x]+(suck|sak|suk)*[k]*(er|ers|a|az|as)*\\b",
+
+  # "cunt"
+  "\\b[kc¢©(][u|µüúû]*nt[zs]*\\b",
+
+  # "dick"
+  "\\b[d][1!|ïíì][c¢©(][xk|<{(][(head)]*[zs]*\\b",
+
+  # derogatory term for homosexual
+  "\\b[f|=ƒ][a@4äáåe]g[g]*[ioa]*[t]*[zs]*\\b",
+
+  # "hoe"
+  "\\bh[o0øöóõ][e3€ëéê][zs]*\\b",
+
+  # "hore"
+  "\\bh[o0øöóõ]r[e3€ëéê]*[zs]*\\b",
+
+  # "kike"
+  "\\b[k|<{(][i1!ïíìy][k|<{(][e3€ëéê][zs]*\\b",
+
+  # racial slur
+  "\\bn[i1!ïíì]gg[e3€ëéê|@a4äáå][r]*[zs]*\\b",
+
+  # "knob"
+  "\\bknob[(head)]*[zs]*\\b",
+
+  # "lesbo"
+  "\\blesbo[sz]*\\b",
+
+  # "minger"
+  "\\bming[(a|er)]+(s|z)*\\b",
+
+  # "moron"
+  "\\bm[o|u]ron(ic|s|z)*\\b",
+
+  # "muff"
+  "\\bmuff\\b",
+
+  # "nonce"
+  "\\bnonce\\b",
+
+  # "nympho"
+  "\\bnympho\\w*\\b",
+
+  # "pecker"
+  "\\bp[e3€ëéê]ck[ae]?[rs]*\\b",
+
+  # "pedo"
+  "\\bp[e3€ëéê]do[philf]*[e]*[zs]*\\b",
+
+  # "pikey
+  "\\bpik(i|is|ey|ies|eys|eyz|iez|iz)+\\b",
+
+  # "pimp"
+  "\\bpimp(s|ing|in|z|ed)*\\b",
+
+  # "piss"
+  "\\bp[i1!|ïíì][s5$§z][s5$§]+(in|ing|er|a|ers|erz)*\\b",
+
+  # "poofter"
+  "\\bpooft(er|ers|as|az)+\\b",
+
+  # "prick"
+  "\\bprick[zs]*\\b",
+
+  # "puke"
+  "\\bpuk[e]*(s|z|ing|ed)*\\b",
+
+  # "pussy"
+  "\\bp[u|µüúû][s5$§z][s5$§z][@a4äáå]*[y¥][zs]*\\b",
+
+  # "queef"
+  "\\bqu[e]+[a]*f(s|z|ing|ed)*\\b",
+
+  # "shag"
+  "\\bshag(ging|gin|ged)*\\b",
+
+  # "skank"
+  "\\bskank[yzs]*\\b",
+
+  # "slag"
+  "\\bslag[zs]*\\b",
+
+  # "slut"
+  "\\b[s5$§z]l[uµüúû][t7+†](i|y)*[zs]*\\b",
+
+  # "sod"
+  "\\bsod[d]*[sz]*(ing)*\\b",
+
+  # "spastic"
+  "\\bspast(ic|ics|icz)*\\b",
+
+  # "retard"
+  "\\bretard[zs]*\\b",
+
+  # "tits"
+  "\\btit[t]*(i|ies|ay|ays|ayz)*\\b",
+
+  # "tosser"
+  "\\btosser[sz]*\\b",
+
+  # "tranny"
+  "\\btr[a@4äáå]nn(y|ies|iez)+\\b",
+
+  # "turd"
+  "\\bturd[sz]*\\b",
+
+  # "twat"
+  "\\b[t7+†]w[a@4äáå][t7+†][zs]*\\b",
+
+  # "wank"
+  "\\bw[a@4äáå]n[k|<{(](z|er|ers|ing|az|a|ed)*\\b",
+
+  # "whore"
+  "\\b(cam|man|m)*wh[o0øöóõ]?r[e3€ëéê]*(d|s|z|ing)*\\b"
+
+)
+```
+
+
+## KWIC
+
+```{r}
+# Australia
+t0 <- Sys.time()
+
+kwic_results <- quanteda::kwic(quanteda::tokens(stringi::stri_split_fixed(ice$clean, " ")), pattern = patterns, valuetype="regex") %>%
+  as.data.frame() %>%
+  dplyr::select(-from, -to)
+
+# save
+base::saveRDS(kwic_results, file = here::here("tables/kwic_results.rda"))
+t1 <- Sys.time()
+t1-t0
+
+# inspect
+head(kwic_results, 20); names(table(kwic_results$keyword)); nrow(kwic_results)
+```
+
+
+## Lemma
+
+annotate lemmas
+
+```{r}
+kwicdf_annotated <- kwic_results %>% 
+  dplyr::mutate(lemma = dplyr::case_when(pattern ==  "\\b(dumb|stupid|lazy|worthless|useless|brain|dead|jack)*[a@4äáå]r[s5$§z][e3€ëéê][h]?[o0øöóõ]*[l1£][e3€ëéê]*[s5$§z]*\\b" ~  "arse(hole)",
+                                         pattern == "\\b(dumb|stupid|lazy|worthless|useless|brain|dead|jack)*[a@4äáå][s5$§z]{2,}[h]?[o0øöóõ]*[l1|£][e3€ëéê]*[s5$§z]*\\b" ~ "ass(hole)",
+    pattern == "\\b[8ß|3][i1!|ïíì]+[a@4äáå]*[t7+†][c¢©(][h](es|ez|ing|ed)*\\b" ~ "bitch",
+    pattern == "\\b[8ß|3][a@4äáå][s5$§z][t7+†][a@4äáå]r[d][o]*(s|z)*\\b" ~ "bastard",
+    pattern == "\\b[8ß|3][e3€ëéê][a@4äáå]n[e3€ëéê]r(s|z)*\\b" ~ "beaner",
+    pattern ==   "\\b[8ß|3][e3€ëéê]ll[e3€ëéê]nd(s|z)*\\b" ~ "bellend",
+    pattern ==     "\\b[8ß|3][1!|ïíì]mb[o0øöóõ](s|z)*\\b" ~ "bimbo",
+    pattern == "\\bbl[o0øöóõ]{2,}d[iy¥](ed)*\\b" ~ "bloody",
+    pattern == "\\b[8ß|3][o0øöóõ]ll[o0øöóõiïíì][xc¢©(k|<{(]+[s5$§z]?\\b" ~ "bollocks",
+    pattern == "\\bboner[s]*\\b" ~ "boner", 
+    pattern == "\\b[8ß|3][o0øöóõ]n[k|<{(](in|ing)*\\b" ~ "bonk",
+    pattern == "\\b[8ß|3][o0øöóõ]{2,}[b8ß|3][ie]*[s5$§z]?\\b" ~ "boobs",
+    pattern == "\\b[8ß|3][u|µüúû]gg[e3€ëéê]r(ing|s|z)*\\b" ~ "bugger",
+    pattern == "\\b[b8ß|3][u|µüúû]ll[s5$§z]h[1!|ïíì]+[t7+†]*\\b" ~ "bullshit",
+    pattern == "\\b[b8ß3][uµüúû][t7+†][t7+†][sz]*(face|head|wit|whipe|hole|h)*[hl]*[sz]*\\b" ~ "butt(hole)",
+    pattern == "\\b(god)*damn\\b" ~ "damn",
+    pattern == "\\bdarki(es)*\\b" ~ "darkie",
+    pattern == "\\b(bull)*d[iy]*ke(s|z)*\\b" ~ "dike",
+    pattern == "\\bdildo(s|z)*\\b" ~ "dildo",
+    pattern == "\\bdork(s|z)*\\b" ~ "dork",
+    pattern == "\\beff(ing|in|ed|d)*[-._+ ]*[(you|up|off)]*\\b" ~ "eff",
+    pattern == "\\bfann(y|ies)+\\b" ~ "fanny",
+    pattern == "\\bfart(s|z|ing|in|ed)*\\b" ~ "fart",
+    pattern == "\\bfrig(g|gin|ging|ged|gs)*\\b" ~ "frig",
+    pattern == "\\b(cluster|head|mother|motha|mutha|mada|cock|mom|mum|daddy|father|sister|brother)*[f=ƒ][uµüúû|@a4äáå|e3€ëéê|o0øöóõ|*]*[c¢©(]*[k|<{(][e3€ëéê]*[r]*(head|face|wit|ing|er|a|ed|ers|az)*\\b" ~ "fuck",
+    pattern == "\\bf[-._+ ](me|you|it|this|that|the|these|those|him|her|us|them)+\\b" ~ "fuck",
+    pattern == "\\b[f=ƒ][c¢©(*k<{(uµüúû*]+\\b" ~ "fuck",
+    pattern == "\\bgash\\b" ~ "gash",
+    pattern == "\\bg[o]*ok(s|z)*\\b" ~ "gook",
+    pattern == "\\bidiot(s|z)*\\b" ~ "idiot",
+    pattern == "\\bjacka[s5$§z][s5$§z]\\b" ~ "jackass",
+    pattern == "\\bjap[zs]*\\b" ~ "jap",
+    
+    pattern == "\\bjerk(s|z|in|ing|ed)*\\b" ~ "jerk",
+    pattern == "\\bji[s5$§z][s5$§z]+\\b" ~ "jiss",
+    pattern == "\\bjug[g]*[s5$§z]*\\b" ~ "jug",
+    pattern == "\\b[(dip)]*[s5$§z]h[1!|ïíì]+[t7+†]*(ing|e|in|er|a|ed|ers|az|s|z)*\\b" ~ "shit",
+    pattern == "\\bktfo\\b" ~ "online",
+    pattern == "\\bstfu\\b" ~ "online",
+    pattern == "\\bgtfo\\b" ~ "online",
+    pattern == "\\bngaf\\b" ~ "online",
+    pattern == "\\bdgaf\\b" ~ "online",
+    pattern == "\\bffs\\b" ~ "online",
+    pattern == "\\bfml\\b" ~ "online",
+    pattern == "\\bomfg\\b" ~ "online",
+    pattern == "\\baf\\b" ~ "online",
+    pattern == "\\btf\\b" ~ "online",
+    pattern == "\\bwtf\\b" ~ "online",
+    pattern == "\\blmao\\b" ~ "online",
+    pattern == "\\blmfao\\b" ~ "online",
+    pattern == "\\brofl\\b" ~ "online",
+    pattern == "\\bch[i]*nk[zs]*\\b" ~ "chink",
+    pattern == "\\bcoon[zs]*\\b" ~ "coon",
+    pattern == "\\b[bull]*crap(ping|ped|s|z|pin)*\\b" ~ "crap",
+    pattern == "\\bcum(ming)*\\b" ~ "cum",  
+    pattern == "\\bc[o0øöóõ][c¢©]+[(k|<{(|x]+(suck|sak|suk)*[k]*(er|ers|a|az|as)*\\b" ~ "cock",
+    pattern == "\\b[kc¢©(][u|µüúû]*nt[zs]*\\b" ~ "cunt",
+    pattern == "\\b[d][1!|ïíì][c¢©(][xk|<{(][(head)]*[zs]*\\b" ~ "dick",
+    pattern == "\\b[f|=ƒ][a@4äáåe]g[g]*[ioa]*[t]*[zs]*\\b" ~ "fag(got)",
+
+    pattern == "\\bh[o0øöóõ][e3€ëéê][zs]*\\b" ~ "hoe",
+    pattern == "\\bh[o0øöóõ]r[e3€ëéê]*[zs]*\\b" ~ "whore",
+    pattern == "\\b[k|<{(][i1!ïíìy][k|<{(][e3€ëéê][zs]*\\b" ~ "kike",
+    pattern == "\\bn[i1!ïíì]gg[e3€ëéê|@a4äáå][r]*[zs]*\\b" ~ "nigger",
+    pattern == "\\bknob[(head)]*[zs]*\\b" ~ "knob",
+    pattern == "\\blesbo[sz]*\\b" ~ "lesbo",
+    pattern == "\\bming[(a|er)]+(s|z)*\\b" ~ "minger" ,
+    pattern == "\\bm[o|u]ron(ic|s|z)*\\b" ~ "moron",
+    pattern == "\\bmuff\\b" ~ "muff",
+    pattern == "\\bnonce\\b" ~ "nonce",
+    pattern == "\\bnympho\\w*\\b" ~ "nympho",
+    pattern == "\\bp[e3€ëéê]ck[ae]?[rs]*\\b" ~ "pecker",
+    pattern == "\\bp[e3€ëéê]do[philf]*[e]*[zs]*\\b" ~ "pedo",
+    pattern == "\\bpik(i|is|ey|ies|eys|eyz|iez|iz)+\\b" ~ "pikey",
+    pattern == "\\bpimp(s|ing|in|z|ed)*\\b" ~ "pimp",
+    pattern == "\\bp[i1!|ïíì][s5$§z][s5$§]+(in|ing|er|a|ers|erz)*\\b" ~ "piss",
+    pattern == "\\bpooft(er|ers|as|az)+\\b" ~ "poofter",
+    pattern == "\\bprick[zs]*\\b" ~ "prick",
+    pattern == "\\bpuk[e]*(s|z|ing|ed)*\\b" ~ "puke",
+    pattern == "\\bp[u|µüúû][s5$§z][s5$§z][@a4äáå]*[y¥][zs]*\\b" ~ "pussy",
+    pattern == "\\bqu[e]+[a]*f(s|z|ing|ed)*\\b" ~ "queef",
+    pattern == "\\bscr[e]+w(ing|ed|s|z)*\\b" ~ "screw",
+    pattern == "\\bshag(ging|gin|ged)*\\b" ~ "shag",
+    pattern == "\\bskank[yzs]*\\b" ~ "skank",
+    pattern == "\\bslag[zs]*\\b" ~ "slag" ,
+    pattern == "\\b[s5$§z]l[uµüúû][t7+†](i|y)*[zs]*\\b" ~ "slut",
+    pattern == "\\bsod[d]*[sz]*(ing)*\\b" ~ "sod",
+    pattern == "\\bspast(ic|ics|icz)*\\b" ~ "spastic",
+    pattern == "\\bretard[zs]*\\b" ~ "retard",
+    pattern == "\\btit[t]*(i|ies|ay|ays|ayz)*\\b" ~ "tits",
+    pattern == "\\btosser[sz]*\\b" ~ "tosser",
+    pattern == "\\btr[a@4äáå]nn(y|ies|iez)+\\b" ~ "tranny",
+    pattern == "\\bturd[sz]*\\b" ~ "turd",
+    pattern == "\\b[t7+†]w[a@4äáå][t7+†][zs]*\\b" ~ "twat",
+    pattern == "\\bw[a@4äáå]n[k|<{(](z|er|ers|ing|az|a|ed)*\\b" ~ "wank",
+    pattern == "\\b(cam|man|m)*wh[o0øöóõ]?r[e3€ëéê]*(d|s|z|ing)*\\b" ~ "whore",
+    pattern == "\\b[f|=ƒ][-._+ ]*[u|µüúû][-._+ ]*[c¢©(][-._+ ]*[k|<{(][-._+ ]*[s5$§z]*(ing|in|ed)*\\b" ~ "fuck",
+    pattern == "\\b[s5$§z][-._+ ]*[h][-._+ ]*[i1!|ïíì]+[-._+ ]*[t7+†][e3€ëéê]*\\b" ~ "shit",
+    pattern == "\\b[a@4äáå][-._+ ]*[s5$§z][-._+ ]*[s5$§z]\\b" ~ "ass",
+    pattern == "\\b[f=ƒ][c¢©(*k<{(uµüúû*]+(ing|er|a|ed|ers|az)*\\b" ~ "fuck",
+    pattern == "\\bf\\b" ~ "fuck",
+    pattern == "\\beff(ing|in|ed|d)*\\b" ~ "eff",
+T ~ pattern))
+# inspect
+names(table(kwicdf_annotated$lemma))
+```
+
+
+check kwics
+
+```{r eval = F}
+#kwicdf %>%   dplyr::filter(stringr::str_detect(keyword, "\\bjerk")) 
+names(table(kwicdf_annotated$keyword))
+```
+
+# Clean kwic
+
+```{r}
+kwicdf_clean <- kwicdf_annotated %>%
+  # Retain rows where 'lemma' is 'hoe' and 'pre' ends with specified phrases
+  filter(!(lemma == "hoe" & !str_detect(pre, "(such a( \\w+)?|other|is a|that( \\w+)?)\\b$")))
+
+
+kwicdf_clean <- kwicdf_clean %>%
+  # Remove rows where 'keyword' contains specific unwanted patterns
+  filter(!str_detect(keyword, "fak(r|er|ing|ers|ed|e)+")) %>%
+  filter(!str_detect(keyword, "fk(r|er|ing|ers|ed|e)+")) %>%
+  filter(!str_detect(keyword, "\\w\\+f$")) %>%
+  filter(!str_detect(keyword, "n\\|f")) %>%
+  filter(!str_detect(keyword, "^\\+f$")) %>%
+  filter(!str_detect(keyword, "=(x|a|r|v|c|k|f)")) %>%
+  filter(!str_detect(keyword, "(x|a|r|v|c|k|f)=")) %>%
+  filter(!str_detect(keyword, "feg(i|o)")) %>%
+  filter(!str_detect(keyword, "^feek.*")) %>%
+  filter(!str_detect(keyword, "(x|a|r|v|c|k|f)\\+")) %>%
+  filter(!str_detect(keyword, "\\+(x|a|r|v|c|k|f)"))  %>%
+  dplyr::filter(!str_detect(keyword, "^\\$")) %>%
+  dplyr::filter(!str_detect(keyword, "\\d{3}")) %>%
+  dplyr::filter(!str_detect(keyword, "\\d{2}=")) %>%
+  dplyr::filter(!str_detect(keyword, "fag(a|o)+")) %>%
+  dplyr::filter(!str_detect(keyword, "fauk\\w*")) %>%
+  dplyr::filter(!str_detect(keyword, "hoess")) %>%
+  dplyr::filter(!str_detect(keyword, "z=u")) %>%
+  dplyr::filter(!str_detect(keyword, "\\+jug")) %>%
+  dplyr::filter(!str_detect(keyword, "2=u")) %>%
+  dplyr::filter(!str_detect(keyword, "b=ok")) %>%
+  dplyr::filter(!str_detect(keyword, "st=ok")) %>%
+  dplyr::filter(!str_detect(keyword, "stat=u")) %>%
+  dplyr::filter(!str_detect(keyword, "t=0k")) %>%
+  dplyr::filter(!str_detect(keyword, "^feak\\*")) %>%
+  dplyr::filter(!str_detect(keyword, "^fc+$")) %>%
+  dplyr::filter(!str_detect(keyword, "^f[c]+a.*$")) %>%
+  dplyr::filter(!str_detect(keyword, "^fauc.*$")) %>%
+  dplyr::filter(!str_detect(keyword, "^f\\$\\d+$"))
+
+kwicdf_clean <- kwicdf_clean %>%
+  # Remove rows where 'lemma' is 'jerk' and 'pre' ends with 'knee' or 'chest'
+  filter(!(lemma == "jerk" & str_detect(pre, "(knee|chest)$"))) %>%
+  
+  # Retain rows where 'lemma' is 'jerk' and:
+  # - 'post' starts with 'off', or
+  # - 'pre' ends with 'this', 'that', 'such a', or 'is a'
+  filter(!(lemma == "jerk" & 
+           !(str_detect(post, "^off\\b") | str_detect(pre, "(this|that|such a|is a)\\b$"))))
+
+
+kwicdf_clean <- kwicdf_clean %>%
+  # Retain rows where 'lemma' is 'eff' and 'post' starts with 'you', 'it', 'off', or 'up'
+  filter(!(lemma == "eff" & !str_detect(post, "^(you|it|off|up)"))) 
+
+kwicdf_clean <- kwicdf_clean %>%
+  # Remove rows where 'lemma' is 'f' unless 'post' starts with specified pronouns or similar words or pre ends with flying
+  filter(!(keyword == "f" & !str_detect(post, "^(king|me|you|it|this|that|these|those|him|her|us|them)\\b")| str_detect(pre, "(flying)\\b$")))
+
+kwicdf_clean <- kwicdf_clean %>%
+  # remove rows where 'lemma' is 'crap' and 'pre' ends with specified phrases
+  filter(!(lemma == "crap" & str_detect(pre, "(metal|poker|roulette)\\b$")))
+
+kwicdf_clean <- kwicdf_clean %>%
+  # Remove rows where 'lemma' is 'dyke' and 'pre' does not end with specified phrases
+  filter(!(lemma == "dyke" & !str_detect(pre, "\\b(a|like|butch|bull|all|fags|as|fucking|club)\\b$")))
+
+kwicdf_clean <- kwicdf_clean %>%
+  # remove rows where 'lemma' is 'faggot' and 'pre' ends with specified phrases
+  filter(!(keyword == "faggot" & str_detect(post, "(bearer)\\b$")))
+
+kwicdf_clean <- kwicdf_clean %>%
+  # Remove rows where 'keyword' is 'fag' and 'pre'  ends with specified phrases
+  filter(!(keyword == "fags" & str_detect(pre, "\\b(of|and|buy|the|few|candy)\\b$") | str_detect(post, "^(to)\\b")))
+
+kwicdf_clean <- kwicdf_clean %>%
+  # remove rows where 'keyword' is 'fk' and 'pre' ends with specified phrases
+  filter(!(keyword == "fk" & str_detect(pre, "(bryne)\\b$")))
+
+kwicdf_clean <- kwicdf_clean %>%
+  # remove rows where 'keyword' is 'jiss' and 'pre' ends with specified phrases
+  filter(!(keyword == "jizz" & str_detect(pre, "\\b(dns)\\b$")))
+
+kwicdf_clean <- kwicdf_clean %>%
+  # remove rows where 'keyword' is 'fu' and 'pre' ends with specified phrases
+  filter(!(keyword == "fu" & str_detect(pre, "(k(ou)ng)\\b$")))
+
+kwicdf_clean <- kwicdf_clean %>%
+  # Remove rows where 'keyword' is 'knob' and 'post' does not end with specified phrases
+  filter(!(lemma == "knob" & !str_detect(post, "^\\b(head[s]?)\\b")))
+
+kwicdf_clean <- kwicdf_clean %>%
+  # remove rows where 'keyword' is 'pecker' and 'pre' ends with specified phrases
+  filter(!(keyword == "pecker" & str_detect(pre, "\\b(a|wood|of|so)\\b$")))
+
+kwicdf_clean <- kwicdf_clean %>%
+  # Retain rows where 'lemma' is 'sod' and 'pre' ends with a xxx xxx
+  filter(!(lemma == "sod" & !str_detect(pre, "\\ba[n]{0,1}( \\w+)?( \\w+)?$"))) 
+
+kwicdf_clean <- kwicdf_clean %>%
+  # remove rows where 'keyword' is 'sodd' and 'post' starts with specified phrases
+  filter(!(keyword == "sodd" & str_detect(post, "^\\b(s)\\b")))
+
+kwicdf_clean <- kwicdf_clean %>%
+  # remove rows where 'keyword' is 'sodd' and 'pre' ends with specified phrases
+  filter(!(keyword == "sods" & str_detect(pre, "\\band\\b$")))
+
+kwicdf_clean <- kwicdf_clean %>%
+  # Remove rows where 'keyword' is 'tf' and 'pre' does not end with specified phrases
+  filter(!(lemma == "tf" & !str_detect(pre, "\\b(how)\\b$")))
+
+kwicdf_clean <- kwicdf_clean %>%
+  # Retain rows where 'keyword' is 'wanka' and 'pre' ends with specified phrases
+  filter(!(keyword == "wanka" & !str_detect(pre, "(such a( \\w+)?|other|is a|that( \\w+)?)\\b$")))
+
+kwicdf_clean <- kwicdf_clean %>%
+  # remove rows where 'keyword' is 'whor' and 'pre' ends with specified phrases
+  filter(!(keyword == "whor" & str_detect(pre, "\\b(casteism)\\b$")))
+
+# inspect
+kwicdf_clean[which(kwicdf_clean$keyword == "whrs"),]
+#names(table(kwicdf_clean$keyword))
+```
+
+
+Bulk exclusion after manual check
+
+```{r}
+exclude <- c("af", "arsel", "arzel", "assle", "asslee", "azzl", "ba$turd", "ba$turd$", "bolivares=u", "chink", "chinks", "chnk", "cnt", "cnts", "coon", "coons", "crap$", "crap=80x", "cum", "daleks=eggs", "darki", "dike", "dikes", "dke", "dkes", "dsh1", "dt=u", "effinded", "eggs=ok", "england=uk", "f$0", "f$1", "f$1$", "f$1$$n$", "f$2", "f$2$", "f$2$$n$", "f$47", "f$50", "f$6", "f$65", "f$78", "f$b", "f$n$", "f$sr", "f$u", "f^a", "f|~n", "f|l", "facke", "faek", "fagg", "faggo", "faggs", "fagi", "fagia", "fagio", "fak", "fanny", "faouk", "fcu", "feack", "feak", "feaked", "feaker", "feaking", "fecke", "feckeed", "feg", "fegg", "fegs", "feka", "feke", "feker", "feock", "feok", "ffs", "fh$f", "fk3", "fka", "fkc", "fkk", "fkkc", "fkkk", "fml", "foak", "fock", "focka", "focke", "focker", "fockers", "foecke", "fok", "foka", "fokaa", "foke", "foker", "food=ok", "fook", "foucker", "fouk", "fouka", "fouke", "frig", "frigg", "fu", "fua", "fuaa", "fuca", "fucc", "fucca", "fuccer", "fued", "fueded", "fueding", "fuek", "fuer", "fuera", "fuerer", "fuing", "fuingers", "fuka", "fuke", "fuku", "fukua", "fuu", "gash", "gok", "goks", "gook", "gone=ok", "gooook", "h=u+pv", "hor", "hore", "hores", "horez", "hors", "horss", "horz", "i=ego", "japss", "japz", "jug", "jugg", "juggs", "juggz", "jugs", "k1kes", "kike", "knobe", "knobes", "knobs", "knobz", "knt", "knts", "kntz", "kunt", "kunts", "kuntz", "l|f", "l21t=u", "lesbos", "lo=uck", "m=uk", "mayai=eggs", "mexico=u", "minga", "mingar", "mingas", "minge", "minger", "mingers", "minges", "muff", "muron", "mwhr", "mwhrs", "n=u", "name=u", "ned=u", "niggars", "nigge", "nigger", "nigges", "nymphoid", "nymphoides", "nympholepsy", "nympholeptic", "nymphomaniacal", "nymphooides", "p=uk", "p1$$d", "peck", "pecka", "pecke", "pecks", "pedoe", "pikey", "piki", "pikies", "pikis", "pissa", "pisser", "pmat=u", "puk", "pukings", "puks", "s=u", "sh1", "sh11", "shag=whoops", "sluty", "smoothie=ek", "soding", "tf", "tit", "titay", "titi", "titt", "titti", "view=uk", "whorings", "whr", "whrd", "whrds", "whre", "whrs", "xian=moron")
+
+kwicdf_clean <- kwicdf_clean %>%
+  filter(!keyword %in% exclude)
+
+```
+
+
+# Remove duplicate rows using dplyr
+
+```{r}
+nrow(kwicdf_clean)
+kwicdf_clean <- kwicdf_clean %>% dplyr::select(-pattern)
+kwicdf_clean <- kwicdf_clean %>% dplyr::distinct()
+nrow(kwicdf_clean)
+```
+
+
+check kwics
+
+```{r}
+kwicdf_clean[which(kwicdf_clean$keyword == "jizz"),] 
+```
+
+# Save KWIC
+
+```{r}
+base::saveRDS(kwicdf_clean, file = here::here("tables/kwic_results_clean.rda"))
+```
+
+
+# Outro
+
+```{r}
+sessionInfo()
+```
+
+
